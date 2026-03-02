@@ -103,6 +103,13 @@ jobs:
           --cov-report=term-missing
           --cov-append
 
+      - name: Test sector-analyst
+        run: >
+          python -m pytest skills/sector-analyst/scripts/tests/ -v
+          --cov=skills/sector-analyst/scripts
+          --cov-report=term-missing
+          --cov-append
+
       - name: Test stanley-druckenmiller-investment
         run: >
           python -m pytest skills/stanley-druckenmiller-investment/scripts/tests/ -v
@@ -142,6 +149,13 @@ jobs:
         run: >
           python -m pytest skills/edge-pipeline-orchestrator/scripts/tests/ -v
           --cov=skills/edge-pipeline-orchestrator/scripts
+          --cov-report=term-missing
+          --cov-append
+
+      - name: Test skill-idea-miner
+        run: >
+          python -m pytest skills/skill-idea-miner/scripts/tests/ -v
+          --cov=skills/skill-idea-miner/scripts
           --cov-report=term-missing
           --cov-append
 

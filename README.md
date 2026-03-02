@@ -26,10 +26,10 @@ Curated Claude skills for equity investors and traders. Each skill bundles promp
 ### Market Analysis & Research
 
 - **Sector Analyst** (`sector-analyst`)
-  - Analyzes sector and industry performance charts to assess market positioning and rotation patterns based on market cycle theory.
-  - Evaluates 1-week and 1-month performance charts to identify Early/Mid/Late Cycle or Recession positioning.
+  - Fetches sector uptrend ratio data from CSV (no API key required) and analyzes sector rotation patterns based on market cycle theory.
+  - Calculates cyclical vs defensive risk regime scores, identifies overbought/oversold sectors, and estimates the current market cycle phase (Early/Mid/Late Cycle or Recession).
+  - Optionally accepts chart images for supplementary industry-level analysis.
   - Generates scenario-based probability assessments for sector rotation strategies.
-  - References include comprehensive sector rotation patterns across all market cycle phases.
 
 - **Breadth Chart Analyst** (`breadth-chart-analyst`)
   - Analyzes S&P 500 Breadth Index and US Stock Market Uptrend Stock Ratio charts to assess market health and positioning.
@@ -309,7 +309,7 @@ Curated Claude skills for equity investors and traders. Each skill bundles promp
 4. Use **Breadth Chart Analyst** to assess overall market health and positioning
 
 ### Weekly Strategy Review
-1. Use **Sector Analyst** with weekly performance charts to identify rotation patterns
+1. Use **Sector Analyst** to fetch CSV data and identify rotation patterns (optionally provide charts)
 2. Use **Technical Analyst** on key indices and positions for trend confirmation
 3. Use **Market Environment Analysis** for comprehensive macro briefing
 4. Use **US Market Bubble Detector** to assess speculative excess and risk levels
@@ -468,6 +468,7 @@ Several skills require API keys for data access:
 | **Macro Regime Detector** | ✅ Required | ❌ Not used | ❌ Not used | Cross-asset ETF ratio analysis |
 | **Market Breadth Analyzer** | ❌ Not used | ❌ Not used | ❌ Not used | Uses free GitHub CSV data |
 | **Uptrend Analyzer** | ❌ Not used | ❌ Not used | ❌ Not used | Uses free GitHub CSV data |
+| **Sector Analyst** | ❌ Not used | ❌ Not used | ❌ Not used | Uses free GitHub CSV data; optional chart images |
 | **Theme Detector** | 🟡 Optional | 🟡 Optional | ❌ Not used | Core: FINVIZ public + yfinance (free). FMP for ETF holdings, FINVIZ Elite for stock lists |
 | **FinViz Screener** | ❌ Not used | 🟡 Optional | ❌ Not used | Public screener free; FINVIZ Elite auto-detected from `$FINVIZ_API_KEY` |
 | **Edge Candidate Agent** | ❌ Not used | ❌ Not used | ❌ Not used | Local YAML generation; validates against local pipeline repo |
