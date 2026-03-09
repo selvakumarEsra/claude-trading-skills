@@ -725,3 +725,89 @@ def test_run_converts_name_to_title_and_adds_id(mine_module, tmp_path: Path):
     assert candidates[0]["id"].startswith("raw_")
     assert candidates[1]["id"].startswith("raw_")
     assert candidates[0]["id"] != candidates[1]["id"]
+
+
+# ── PROJECT_ALLOWLIST ──
+
+
+def test_project_allowlist_contains_trading_projects(mine_module):
+    """Allowlist includes all expected trading-related projects."""
+    al = mine_module.PROJECT_ALLOWLIST
+    assert "claude-trading-skills" in al
+    assert "weekly-trade-strategy" in al
+    assert "claude-market-agents" in al
+    assert "trade-edge-finder" in al
+    assert "trade-strategy-pipeline" in al
+
+
+# ── filter_non_trading_candidates ──
+
+
+def test_filter_rejects_developer_tooling_category(mine_module):
+    """Candidates with rejected categories are filtered out."""
+    candidates = [
+        {"title": "code-nav", "category": "developer-tooling", "description": ""},
+        {"title": "trade-tool", "category": "trade-execution", "description": ""},
+        {"title": "skill-opt", "category": "skill-development", "description": ""},
+    ]
+    result = mine_module.filter_non_trading_candidates(candidates)
+    assert len(result) == 1
+    assert result[0]["title"] == "trade-tool"
+
+
+def test_filter_rejects_keyword_in_title(mine_module):
+    """Candidates with rejected keywords in title are filtered out."""
+    candidates = [
+        {"title": "codebase-navigator", "category": "other", "description": ""},
+        {"title": "earnings-tracker", "category": "trade-review", "description": ""},
+    ]
+    result = mine_module.filter_non_trading_candidates(candidates)
+    assert len(result) == 1
+    assert result[0]["title"] == "earnings-tracker"
+
+
+def test_filter_rejects_keyword_in_description(mine_module):
+    """Candidates with rejected keywords in description are filtered out."""
+    candidates = [
+        {
+            "title": "some-tool",
+            "category": "other",
+            "description": "A git-bulk commit helper",
+        },
+        {
+            "title": "watchlist",
+            "category": "trading",
+            "description": "Monitor stock prices",
+        },
+    ]
+    result = mine_module.filter_non_trading_candidates(candidates)
+    assert len(result) == 1
+    assert result[0]["title"] == "watchlist"
+
+
+def test_filter_passes_all_trading_candidates(mine_module):
+    """All trading-related candidates pass through the filter."""
+    candidates = [
+        {"title": "earnings-reviewer", "category": "trade-review", "description": "Review trades"},
+        {"title": "alert-monitor", "category": "trade-execution", "description": "Price alerts"},
+    ]
+    result = mine_module.filter_non_trading_candidates(candidates)
+    assert len(result) == 2
+
+
+# ── _build_llm_prompt trading_focus ──
+
+
+def test_build_llm_prompt_trading_focus_true(mine_module):
+    """With trading_focus=True, prompt includes trading constraints."""
+    prompt = mine_module._build_llm_prompt({}, [], "test-project", trading_focus=True)
+    assert "trading and investing skill library" in prompt
+    assert "DO NOT propose developer-tooling" in prompt
+
+
+def test_build_llm_prompt_trading_focus_false(mine_module):
+    """With trading_focus=False, prompt is generic (no trading constraints)."""
+    prompt = mine_module._build_llm_prompt({}, [], "test-project", trading_focus=False)
+    assert "trading and investing skill library" not in prompt
+    assert "DO NOT propose developer-tooling" not in prompt
+    assert "automate or improve" in prompt
