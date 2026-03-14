@@ -48,6 +48,7 @@ class FMPClient:
             )
 
         self.session = requests.Session()
+        self.session.headers.update({"apikey": self.api_key})
         self.cache = {}  # Simple in-memory cache for session
         self.last_call_time = 0
         self.rate_limit_reached = False
@@ -60,7 +61,7 @@ class FMPClient:
 
         Args:
             url: Full endpoint URL
-            params: Query parameters (apikey added automatically)
+            params: Query parameters (apikey sent via header)
 
         Returns:
             JSON response dict, or None on error
@@ -70,7 +71,6 @@ class FMPClient:
 
         if params is None:
             params = {}
-        params["apikey"] = self.api_key
 
         # Enforce rate limit
         elapsed = time.time() - self.last_call_time

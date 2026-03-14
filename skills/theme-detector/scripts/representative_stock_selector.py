@@ -464,13 +464,10 @@ class RepresentativeStockSelector:
         self._rate_limit()
         self._source_states["fmp"].total_queries += 1
 
-        url = (
-            f"https://financialmodelingprep.com/api/v3/etf-holder/{etf_symbol}"
-            f"?apikey={self._fmp_api_key}"
-        )
+        url = f"https://financialmodelingprep.com/api/v3/etf-holder/{etf_symbol}"
 
         try:
-            resp = requests.get(url, timeout=15)
+            resp = requests.get(url, headers={"apikey": self._fmp_api_key}, timeout=15)
             if resp.status_code != 200:
                 self._record_failure("fmp")
                 return []

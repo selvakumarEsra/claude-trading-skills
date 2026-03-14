@@ -73,11 +73,10 @@ def fetch_sector_stocks(sector, api_key, min_market_cap=2_000_000_000):
         "sector": sector,
         "marketCapMoreThan": min_market_cap,
         "limit": 1000,
-        "apikey": api_key,
     }
 
     try:
-        response = requests.get(url, params=params, timeout=30)
+        response = requests.get(url, params=params, headers={"apikey": api_key}, timeout=30)
         response.raise_for_status()
         data = response.json()
 
@@ -112,10 +111,9 @@ def fetch_sector_stocks(sector, api_key, min_market_cap=2_000_000_000):
 def fetch_historical_prices(symbol, api_key, lookback_days=730):
     """Fetch historical adjusted close prices for a symbol"""
     url = f"https://financialmodelingprep.com/api/v3/historical-price-full/{symbol}"
-    params = {"apikey": api_key}
 
     try:
-        response = requests.get(url, params=params, timeout=30)
+        response = requests.get(url, headers={"apikey": api_key}, timeout=30)
         response.raise_for_status()
         data = response.json()
 

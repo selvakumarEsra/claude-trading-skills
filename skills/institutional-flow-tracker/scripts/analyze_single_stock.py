@@ -51,10 +51,9 @@ class SingleStockAnalyzer:
     def get_institutional_holders(self, symbol: str) -> list[dict]:
         """Get all institutional holders data for a stock"""
         url = f"{self.base_url}/institutional-holder/{symbol}"
-        params = {"apikey": self.api_key}
 
         try:
-            response = requests.get(url, params=params, timeout=30)
+            response = requests.get(url, headers={"apikey": self.api_key}, timeout=30)
             response.raise_for_status()
             data = response.json()
             return data if isinstance(data, list) else []
@@ -65,10 +64,9 @@ class SingleStockAnalyzer:
     def get_company_profile(self, symbol: str) -> dict:
         """Get company profile information"""
         url = f"{self.base_url}/profile/{symbol}"
-        params = {"apikey": self.api_key}
 
         try:
-            response = requests.get(url, params=params, timeout=30)
+            response = requests.get(url, headers={"apikey": self.api_key}, timeout=30)
             response.raise_for_status()
             data = response.json()
             return data[0] if isinstance(data, list) and data else {}

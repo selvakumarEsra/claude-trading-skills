@@ -52,10 +52,9 @@ def get_api_key(args_api_key):
 def fetch_historical_prices(symbol, api_key, lookback_days=365):
     """Fetch historical adjusted close prices for a symbol"""
     url = f"https://financialmodelingprep.com/api/v3/historical-price-full/{symbol}"
-    params = {"apikey": api_key}
 
     try:
-        response = requests.get(url, params=params, timeout=30)
+        response = requests.get(url, headers={"apikey": api_key}, timeout=30)
         response.raise_for_status()
         data = response.json()
 

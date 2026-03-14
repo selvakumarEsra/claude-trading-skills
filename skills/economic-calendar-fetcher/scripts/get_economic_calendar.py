@@ -47,14 +47,15 @@ def fetch_economic_calendar(from_date: str, to_date: str, api_key: str) -> list[
     base_url = "https://financialmodelingprep.com/api/v3/economic_calendar"
 
     # Build query parameters
-    params = {"from": from_date, "to": to_date, "apikey": api_key}
+    params = {"from": from_date, "to": to_date}
 
     # Construct URL with parameters
     url = f"{base_url}?{urllib.parse.urlencode(params)}"
 
     try:
         # Make API request
-        with urllib.request.urlopen(url) as response:
+        request = urllib.request.Request(url, headers={"apikey": api_key})
+        with urllib.request.urlopen(request) as response:
             if response.status != 200:
                 raise ValueError(f"API returned status code {response.status}")
 

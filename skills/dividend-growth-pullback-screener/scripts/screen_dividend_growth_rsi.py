@@ -116,6 +116,7 @@ class FMPClient:
     def __init__(self, api_key: str):
         self.api_key = api_key
         self.session = requests.Session()
+        self.session.headers.update({"apikey": self.api_key})
         self.rate_limit_reached = False
         self.retry_count = 0
 
@@ -126,7 +127,6 @@ class FMPClient:
 
         if params is None:
             params = {}
-        params["apikey"] = self.api_key
 
         url = f"{self.BASE_URL}/{endpoint}"
 

@@ -54,10 +54,10 @@ class InstitutionalFlowTracker:
     def get_stock_screener(self, market_cap_min: int = 1000000000, limit: int = 100) -> list[dict]:
         """Get list of stocks meeting market cap criteria"""
         url = f"{self.base_url}/stock-screener"
-        params = {"marketCapMoreThan": market_cap_min, "limit": limit, "apikey": self.api_key}
+        params = {"marketCapMoreThan": market_cap_min, "limit": limit}
 
         try:
-            response = requests.get(url, params=params, timeout=30)
+            response = requests.get(url, params=params, headers={"apikey": self.api_key}, timeout=30)
             response.raise_for_status()
             return response.json()
         except requests.exceptions.RequestException as e:
@@ -67,10 +67,9 @@ class InstitutionalFlowTracker:
     def get_institutional_holders(self, symbol: str) -> list[dict]:
         """Get institutional holders for a specific stock"""
         url = f"{self.base_url}/institutional-holder/{symbol}"
-        params = {"apikey": self.api_key}
 
         try:
-            response = requests.get(url, params=params, timeout=30)
+            response = requests.get(url, headers={"apikey": self.api_key}, timeout=30)
             response.raise_for_status()
             data = response.json()
             return data if isinstance(data, list) else []

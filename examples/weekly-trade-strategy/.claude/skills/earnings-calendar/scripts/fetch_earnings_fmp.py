@@ -56,10 +56,10 @@ class FMPEarningsCalendar:
             List of earnings announcements or None on error
         """
         url = f"{self.BASE_URL}/earning_calendar"
-        params = {"apikey": self.api_key, "from": start_date, "to": end_date}
+        params = {"from": start_date, "to": end_date}
 
         try:
-            response = requests.get(url, params=params, timeout=30)
+            response = requests.get(url, params=params, headers={"apikey": self.api_key}, timeout=30)
 
             if response.status_code == 401:
                 print("❌ ERROR: Invalid API key", file=sys.stderr)
@@ -117,10 +117,10 @@ class FMPEarningsCalendar:
             symbols_str = ",".join(batch)
 
             url = f"{self.BASE_URL}/profile/{symbols_str}"
-            params = {"apikey": self.api_key}
+            params = {}
 
             try:
-                response = requests.get(url, params=params, timeout=30)
+                response = requests.get(url, params=params, headers={"apikey": self.api_key}, timeout=30)
                 response.raise_for_status()
 
                 for profile in response.json():

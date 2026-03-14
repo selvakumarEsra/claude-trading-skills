@@ -32,10 +32,9 @@ def check_institutional_endpoint():
     # Test institutional-holder endpoint
     test_symbol = "AAPL"
     url = f"https://financialmodelingprep.com/api/v3/institutional-holder/{test_symbol}"
-    params = {"apikey": api_key}
 
     try:
-        response = requests.get(url, params=params, timeout=10)
+        response = requests.get(url, headers={"apikey": api_key}, timeout=10)
 
         print(f"Status Code: {response.status_code}")
         print(f"Response length: {len(response.text)} bytes")

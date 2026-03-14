@@ -46,6 +46,7 @@ class FMPClient:
                 "or pass api_key parameter."
             )
         self.session = requests.Session()
+        self.session.headers.update({"apikey": self.api_key})
         self.cache = {}
         self.last_call_time = 0
         self.rate_limit_reached = False
@@ -70,7 +71,6 @@ class FMPClient:
 
         if params is None:
             params = {}
-        params["apikey"] = self.api_key
 
         elapsed = time.time() - self.last_call_time
         if elapsed < self.RATE_LIMIT_DELAY:

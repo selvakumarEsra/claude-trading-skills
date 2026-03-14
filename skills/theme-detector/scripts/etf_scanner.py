@@ -41,13 +41,13 @@ except ImportError:
 
 
 def _stable_quote_url(base: str, symbols_str: str, params: dict) -> tuple[str, dict]:
-    """stable/quote?symbol=A,B&apikey=..."""
+    """stable/quote?symbol=A,B"""
     params["symbol"] = symbols_str
     return base, params
 
 
 def _v3_quote_url(base: str, symbols_str: str, params: dict) -> tuple[str, dict]:
-    """api/v3/quote/A,B?apikey=..."""
+    """api/v3/quote/A,B"""
     return f"{base}/{symbols_str}", params
 
 
@@ -144,7 +144,7 @@ class ETFScanner:
         if not HAS_REQUESTS or not self._fmp_api_key:
             return None
 
-        params = {"apikey": self._fmp_api_key}
+        params = {}
         if extra_params:
             params.update(extra_params)
 
@@ -154,7 +154,7 @@ class ETFScanner:
             self._fmp_rate_limit()
             self._stats[ctx]["fmp_calls"] += 1
             try:
-                resp = _requests_lib.get(url, params=final_params, timeout=15)
+                resp = _requests_lib.get(url, params=final_params, headers={"apikey": self._fmp_api_key}, timeout=15)
                 if resp.status_code == 200:
                     data = resp.json()
                     if data:
