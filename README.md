@@ -106,8 +106,8 @@ Curated Claude skills for equity investors and traders. Each skill bundles promp
 - **Economic Calendar Fetcher** (`economic-calendar-fetcher`)
   - Fetches upcoming economic events using Financial Modeling Prep (FMP) API for next 7-90 days.
   - Retrieves central bank decisions, employment reports (NFP), inflation data (CPI/PPI), GDP releases, and other market-moving indicators.
-  - Generates chronological markdown reports with impact assessment (High/Medium/Low) and market implications analysis.
-  - Supports flexible API key management (environment variable or user input) with comprehensive error handling.
+  - The script outputs raw JSON or text; the assistant filters events and generates a Markdown report with impact assessment (High/Medium/Low) and market implications analysis.
+  - Supports flexible API key management (environment variable recommended; `--api-key` CLI argument as fallback).
 
 - **Earnings Calendar** (`earnings-calendar`)
   - Retrieves upcoming earnings announcements for US stocks using FMP API with focus on mid-cap+ companies (>$2B market cap).
