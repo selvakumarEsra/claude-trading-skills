@@ -248,6 +248,7 @@ def main():
         "components": component_results,
     }
 
+    os.makedirs(args.output_dir, exist_ok=True)
     timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
     json_file = os.path.join(args.output_dir, f"macro_regime_{timestamp}.json")
     md_file = os.path.join(args.output_dir, f"macro_regime_{timestamp}.md")

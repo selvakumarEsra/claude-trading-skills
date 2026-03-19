@@ -52,7 +52,7 @@ def generate_markdown_report(analysis: dict, output_file: str):
     lines.append("| Metric | Value |")
     lines.append("|--------|-------|")
     lines.append(f"| **Current Regime** | **{regime_label}** |")
-    lines.append(f"| **Transition Confidence** | {confidence.upper()} |")
+    lines.append(f"| **Classification Confidence** | {confidence.upper()} |")
     lines.append(f"| **Transition Score** | {zone_emoji} **{score}/100** |")
     lines.append(f"| **Signal Zone** | {zone} |")
     lines.append(
@@ -71,9 +71,12 @@ def generate_markdown_report(analysis: dict, output_file: str):
         lines.append(f"| **Competing Regimes** | {' vs '.join(r.capitalize() for r in tied)} |")
     lines.append("")
 
-    lines.append("> *Transition Confidence* measures how certain we are that a regime")
-    lines.append("> transition is underway. *Destination Clarity* (shown when ambiguous)")
-    lines.append("> indicates how clear the landing regime is.")
+    lines.append(
+        "> *Classification Confidence* measures how certain we are about the current regime"
+    )
+    lines.append("> classification (separate from *Transition Probability* shown above).")
+    lines.append("> *Destination Clarity* (shown when ambiguous) indicates how clearly the")
+    lines.append("> destination regime can be identified.")
     lines.append("")
 
     # Regime description
