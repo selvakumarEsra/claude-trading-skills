@@ -37,7 +37,7 @@ Theme Detectorは、FINVIZの業種・セクターパフォーマンスデータ
 | 次元 | スケール | 意味 |
 |------|---------|------|
 | **Theme Heat** | 0-100 | テーマの強度（モメンタム、出来高、上昇トレンド比率、ブレッド） |
-| **Lifecycle Maturity** | Early / Mid / Late / Exhaustion | テーマの成熟度（持続期間、極端度、バリュエーション、ETF本数） |
+| **Lifecycle Maturity** | Emerging / Accelerating / Trending / Mature / Exhausting | テーマの成熟度（持続期間、極端度、バリュエーション、ETF本数） |
 | **Confidence** | Low / Medium / High | 検出の信頼度（定量的データとナラティブの一致度） |
 
 **主な特徴:**
@@ -51,7 +51,7 @@ Theme Detectorは、FINVIZの業種・セクターパフォーマンスデータ
 **解決する問題:**
 - 市場全体のテーマ的な流れを体系的に把握
 - 「いまどのテーマが熱いのか」「どのテーマが枯れつつあるのか」を定量的に回答
-- テーマ投資のタイミング判断（Earlyで入るか、Exhaustionで出るか）
+- テーマ投資のタイミング判断（Emergingで入るか、Exhaustingで出るか）
 
 ---
 
@@ -68,6 +68,8 @@ Theme Detectorは、FINVIZの業種・セクターパフォーマンスデータ
 | `pandas` | 必須 | データ集計・分析 |
 | `numpy` | 必須 | 数値計算 |
 | `yfinance` | 必須 | ETFデータ取得 |
+| `finvizfinance` | 任意 | FINVIZ Eliteモード用 |
+| `PyYAML` | 任意 | `--themes-config` カスタムテーマ用 |
 | FINVIZ Elite APIキー | 任意 | 高速モード（2-3分 vs 5-8分）、全業種フルカバレッジ |
 | FMP APIキー | 任意 | P/Eバリュエーションデータの取得 |
 
@@ -103,6 +105,9 @@ python3 skills/theme-detector/scripts/theme_detector.py \
 ```
 いま市場でどんなテーマが注目されている？ブルとベアの両方教えて。
 ```
+
+> **注意:** スクリプト単体の出力ではConfidenceはMediumが上限です（3つの確認レイヤーのうち2つ）。ClaudeのWebSearchによるナラティブ確認でHighに昇格可能です。
+{: .note }
 
 ---
 
@@ -142,7 +147,7 @@ Theme Heat (0-100) は4つのサブスコアから算出されます：
 | **Momentum Strength** | 複数タイムフレーム（1W, 1M, 3M, 6M, 1Y）のパフォーマンス |
 | **Volume Intensity** | 出来高の異常度（平均比） |
 | **Uptrend Signal** | Monty's Uptrend Ratio（上昇トレンド比率、MA10、傾き） |
-| **Breadth Signal** | テーマ内業種の参加率 |
+| **Breadth Signal** | テーマ内業種のうち、方向性に沿ったweighted returnを持つ業種の割合（LEADテーマなら正のリターン、LAGテーマなら負のリターン）。業種レベルの参加率 |
 
 **Step 4: ライフサイクル評価**
 
@@ -271,8 +276,8 @@ Theme Heatスコア85と45の違いは？投資判断にどう使う？
 
 | テーマ | Heat | Direction | Lifecycle | Confidence |
 |--------|------|-----------|-----------|------------|
-| AI & Semiconductors | 85 | Bullish | Trending | High |
-| Gold & Precious Metals | 72 | Bullish | Mid | Medium |
+| AI & Semiconductors | 85 | Bullish | Trending | Medium |
+| Gold & Precious Metals | 72 | Bullish | Accelerating | Medium |
 | Clean Energy & EV | 35 | Bearish | Exhausting | Medium |
 
 ### フィールドの読み方
@@ -280,7 +285,7 @@ Theme Heatスコア85と45の違いは？投資判断にどう使う？
 | フィールド | 意味 |
 |----------|------|
 | **Heat** | テーマの総合的な勢い（高いほど注目度が高い） |
-| **Direction** | Bullish（上昇）/ Bearish（下落）/ Neutral（中立） |
+| **Direction** | LEAD（相対的にアウトパフォーム）/ LAG（相対的にアンダーパフォーム）/ Neutral（中立）。LAGテーマでも絶対リターンが正の場合がある（ショートシグナルではない） |
 | **Lifecycle** | テーマの成熟段階（Emerging → Exhausting） |
 | **Confidence** | 検出精度の信頼度（High = 定量+ナラティブ一致） |
 
@@ -313,7 +318,7 @@ Theme Heatスコア85と45の違いは？投資判断にどう使う？
 | レートリミット | 0.5秒/リクエスト | 2.0秒/リクエスト |
 | データ鮮度 | リアルタイム | 15分遅延 |
 | 実行時間 | 2-3分 | 5-8分 |
-| 料金 | $39.99/月 | 無料 |
+| 料金 | $39.50/月 | 無料 |
 
 ### 定期実行のすすめ
 
@@ -375,7 +380,7 @@ Theme Heatスコア85と45の違いは？投資判断にどう使う？
 **対処:**
 1. FINVIZ Elite APIキーの導入を検討（2-3分に短縮）
 2. `--max-themes 5` でテーマ数を制限
-3. `--max-stocks-per-theme 3` で代表銘柄数を制限
+3. `--max-stocks-per-theme 10` で代表銘柄数を制限（デフォルト値）
 
 ### テーマが検出されない
 
@@ -385,6 +390,7 @@ Theme Heatスコア85と45の違いは？投資判断にどう使う？
 1. ベアテーマも含めて確認（Direction = Bearish）
 2. `--max-themes` を増やして閾値の低いテーマも表示
 3. 市場が低ボラの時期はテーマ検出が困難なのは正常
+4. テーマ検出には最低2業種のマッチが必要（themes.yaml の `cross_sector_min_matches` で設定）
 
 ### yfinance / pandasエラー
 
@@ -429,12 +435,17 @@ python3 skills/theme-detector/scripts/theme_detector.py [OPTIONS]
 
 | オプション | 説明 | デフォルト |
 |-----------|------|-----------|
+| `--output-dir` | 出力ディレクトリ | `reports/` |
 | `--finviz-api-key` | FINVIZ Elite APIキー | `$FINVIZ_API_KEY` |
 | `--fmp-api-key` | FMP APIキー（バリュエーション用） | `$FMP_API_KEY` |
 | `--finviz-mode` | FINVIZモード: `elite` / `public` | 自動検出 |
-| `--max-themes` | レポートに含める最大テーマ数 | - |
-| `--max-stocks-per-theme` | テーマあたりの最大代表銘柄数 | - |
-| `--output-dir` | 出力ディレクトリ | カレントディレクトリ |
+| `--max-themes` | レポートに含める最大テーマ数 | `10` |
+| `--max-stocks-per-theme` | テーマあたりの最大代表銘柄数 | `10` |
+| `--top` | 詳細セクションに表示するトップN件 | `3` |
+| `--themes-config` | カスタムテーマYAMLパス | 内蔵 `themes.yaml` |
+| `--discover-themes` | 未マッチ業種から自動テーマ発見 | `false` |
+| `--dynamic-stocks` | FINVIZによる動的銘柄選択 | `false` |
+| `--dynamic-min-cap` | 動的銘柄の最小時価総額 (micro/small/mid) | `small` |
 
 ### 定義済みテーマ一覧
 
@@ -474,4 +485,4 @@ python3 skills/theme-detector/scripts/theme_detector.py [OPTIONS]
 | `skills/theme-detector/scripts/theme_detector.py` | メインスクリプト |
 | `skills/theme-detector/scripts/theme_classifier.py` | テーマ分類エンジン |
 | `skills/theme-detector/scripts/finviz_industry_scanner.py` | FINVIZデータ収集 |
-| `skills/theme-detector/scripts/lifecycle_analyzer.py` | ライフサイクル評価 |
+| `skills/theme-detector/scripts/calculators/lifecycle_calculator.py` | ライフサイクル評価 |

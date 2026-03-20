@@ -18,6 +18,9 @@ Screen post-earnings gap-up stocks for PEAD (Post-Earnings Announcement Drift) p
 ## Prerequisites
 
 - FMP API key (set `FMP_API_KEY` environment variable or pass `--api-key`)
+  ```bash
+  export FMP_API_KEY=your_api_key_here
+  ```
 - Free tier (250 calls/day) is sufficient for default screening
 - For Mode B: earnings-trade-analyzer JSON output file with schema_version "1.0"
 

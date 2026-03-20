@@ -214,6 +214,49 @@ class TestCompetingRegimeRecommendations:
             os.unlink(path)
 
 
+class TestClassificationConfidenceLabel:
+    def test_report_shows_classification_confidence_label(self):
+        """レポートに 'Classification Confidence' が含まれ 'Transition Confidence' が含まれないこと"""
+        analysis = _make_analysis()
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as f:
+            path = f.name
+        try:
+            generate_markdown_report(analysis, path)
+            with open(path) as f:
+                content = f.read()
+            assert "Classification Confidence" in content
+            assert "Transition Confidence" not in content
+        finally:
+            os.unlink(path)
+
+    def test_report_footnote_contains_destination_clarity(self):
+        """footnote に Destination Clarity の説明が残っていること"""
+        analysis = _make_analysis()
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as f:
+            path = f.name
+        try:
+            generate_markdown_report(analysis, path)
+            with open(path) as f:
+                content = f.read()
+            assert "Destination Clarity" in content
+        finally:
+            os.unlink(path)
+
+    def test_report_footnote_separates_classification_from_transition_probability(self):
+        """footnote が Classification Confidence と Transition Probability を別指標として明記すること"""
+        analysis = _make_analysis()
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as f:
+            path = f.name
+        try:
+            generate_markdown_report(analysis, path)
+            with open(path) as f:
+                content = f.read()
+            assert "Transition Probability" in content
+            assert "Classification Confidence" in content
+        finally:
+            os.unlink(path)
+
+
 class TestYieldCurveProxyWarning:
     def test_proxy_source_shows_warning(self):
         """When yield curve uses SHY/TLT proxy, report should warn about reduced resolution."""

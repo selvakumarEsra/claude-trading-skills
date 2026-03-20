@@ -171,6 +171,7 @@ def classify_regime(component_results: dict[str, dict]) -> dict:
         return comp.get("direction", "unknown")
 
     conc_dir = _dir(conc)
+    yc_dir = _dir(yc)
     credit_dir = _dir(credit)
     size_dir = _dir(size)
     eb_dir = _dir(eb)
@@ -182,8 +183,8 @@ def classify_regime(component_results: dict[str, dict]) -> dict:
     # Score each regime hypothesis
     regime_scores = {
         "concentration": _score_concentration_regime(conc_dir, size_dir, credit_dir),
-        "broadening": _score_broadening_regime(conc_dir, size_dir, credit_dir, sector_dir),
-        "contraction": _score_contraction_regime(credit_dir, sector_dir, eb_dir, size_dir),
+        "broadening": _score_broadening_regime(conc_dir, size_dir, credit_dir, sector_dir, yc_dir),
+        "contraction": _score_contraction_regime(credit_dir, sector_dir, eb_dir, size_dir, yc_dir),
         "inflationary": _score_inflationary_regime(corr_regime, eb_dir),
         "transitional": 0,  # Computed below
     }
@@ -333,7 +334,9 @@ def _score_concentration_regime(conc_dir: str, size_dir: str, credit_dir: str) -
     return score
 
 
-def _score_broadening_regime(conc_dir: str, size_dir: str, credit_dir: str, sector_dir: str) -> int:
+def _score_broadening_regime(
+    conc_dir: str, size_dir: str, credit_dir: str, sector_dir: str, yc_dir: str = "unknown"
+) -> int:
     """Score evidence for Broadening regime."""
     score = 0
     if conc_dir == "broadening":
@@ -344,11 +347,17 @@ def _score_broadening_regime(conc_dir: str, size_dir: str, credit_dir: str, sect
         score += 1
     if sector_dir == "risk_on":
         score += 1
+    if yc_dir == "steepening":
+        score += 1
     return score
 
 
 def _score_contraction_regime(
-    credit_dir: str, sector_dir: str, eb_dir: str, size_dir: str = "unknown"
+    credit_dir: str,
+    sector_dir: str,
+    eb_dir: str,
+    size_dir: str = "unknown",
+    yc_dir: str = "unknown",
 ) -> int:
     """Score evidence for Contraction regime.
 
@@ -361,6 +370,8 @@ def _score_contraction_regime(
     if sector_dir == "risk_off":
         score += 2
     if eb_dir == "risk_off":
+        score += 1
+    if yc_dir == "flattening":
         score += 1
     # Contradiction: small-cap outperformance is inconsistent with contraction
     if size_dir == "small_cap_leading":
@@ -450,6 +461,7 @@ REGIME_CONSISTENCY = {
         "credit_conditions": ["stable", "easing"],
         "sector_rotation": "risk_on",
         "equity_bond": "risk_on",
+        "yield_curve": "steepening",
     },
     "concentration": {
         "concentration": "concentrating",
@@ -460,6 +472,7 @@ REGIME_CONSISTENCY = {
         "credit_conditions": "tightening",
         "sector_rotation": "risk_off",
         "equity_bond": "risk_off",
+        "yield_curve": ["flattening"],
     },
     "inflationary": {
         "equity_bond": "risk_off",

@@ -542,8 +542,8 @@ python3 scripts/screen_dividend_stocks.py --use-finviz --finviz-api-key your_key
 ### Cost Analysis
 
 **FINVIZ Elite:**
-- Monthly: $39.99
-- Annual: $329.99 (~$27.50/month)
+- Monthly: $39.50
+- Annual: $299.50 (~$24.96/month)
 
 **FMP API:**
 - Free tier: 250 calls/day (sufficient for two-stage screening)

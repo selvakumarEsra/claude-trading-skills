@@ -92,8 +92,8 @@ Speeds up dividend screener execution (70-80% faster) and provides full industry
 
 | Plan | Cost | Notes |
 |------|------|-------|
-| Monthly | $39.99/mo | Real-time data, fast API access |
-| Annual | $329.99/yr (~$27.50/mo) | Best value with annual discount |
+| Monthly | $39.50/mo | Real-time data, fast API access |
+| Annual | $299.50/yr (~$24.96/mo) | Best value with annual discount |
 
 **Sign up:** [https://elite.finviz.com/](https://elite.finviz.com/)
 

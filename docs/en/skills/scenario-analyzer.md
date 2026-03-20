@@ -44,9 +44,9 @@ This skill takes a news headline as input and builds medium-to-long-term (18-mon
 
 **Usage examples:**
 ```
-/headline-scenario-analyzer "Fed raises interest rates by 50bp, signals more hikes ahead"
-/headline-scenario-analyzer "China announces new tariffs on US semiconductors"
-/headline-scenario-analyzer "OPEC+ agrees to cut oil production by 2 million barrels per day"
+/scenario-analyzer "Fed raises interest rates by 50bp, signals more hikes ahead"
+/scenario-analyzer "China announces new tariffs on US semiconductors"
+/scenario-analyzer "OPEC+ agrees to cut oil production by 2 million barrels per day"
 ```
 
 ---
@@ -55,6 +55,7 @@ This skill takes a news headline as input and builds medium-to-long-term (18-mon
 
 - **API Key:** None required
 - **Python 3.9+** recommended
+- **Claude Code Required:** This skill uses two specialized agents (`scenario-analyst` and `strategy-reviewer`) defined in the `agents/` directory. These agents are only available in the Claude Code environment. The `.skill` package does not include agents. In the Claude web app, the skill runs all analysis in a single pass without dedicated agents.
 
 ---
 
@@ -158,6 +159,13 @@ Save the final report to `reports/scenario_analysis_<topic>_YYYYMMDD.md` in the 
 - Second opinion / review section
 - Final investment thesis with recommended actions, risk factors, and monitoring points
 
+#### Step 3.3: Save Report
+
+1. Create the `reports/` directory if it does not exist
+2. Save as `scenario_analysis_<topic>_YYYYMMDD.md` (e.g., `scenario_analysis_venezuela_20260104.md`)
+3. Notify the user of save completion
+4. **Do NOT save directly to the project root**
+
 ---
 
 ---
@@ -169,3 +177,49 @@ Save the final report to `reports/scenario_analysis_<topic>_YYYYMMDD.md` in the 
 - `skills/scenario-analyzer/references/headline_event_patterns.md`
 - `skills/scenario-analyzer/references/scenario_playbooks.md`
 - `skills/scenario-analyzer/references/sector_sensitivity_matrix.md`
+
+---
+
+## 7. Important Notes
+
+### Language
+- All analysis and output is in **Japanese**
+- Stock tickers remain in English notation
+
+### Market Scope
+- Stock selection is limited to **US-listed stocks only**
+- ADRs are included
+
+### Time Horizon
+- Scenarios cover **18 months**
+- Described in three phases: 0-6 months / 6-12 months / 12-18 months
+
+### Probability Allocation
+- Base + Bull + Bear = **100%**
+- Each scenario probability must include supporting rationale
+
+### Second Opinion
+- **Mandatory** — `strategy-reviewer` is always invoked
+- Review findings are reflected in the final judgment
+
+### Output Path (Important)
+- Reports **must** be saved under the `reports/` directory
+- Path: `reports/scenario_analysis_<topic>_YYYYMMDD.md`
+- Example: `reports/scenario_analysis_fed_rate_hike_20260104.md`
+- Create `reports/` if it does not exist
+- **Never save directly to the project root**
+
+---
+
+## 8. Quality Checklist
+
+Verify before completing the report:
+
+- [ ] Headline correctly parsed
+- [ ] Event type classification is appropriate
+- [ ] 3-scenario probabilities sum to 100%
+- [ ] 1st / 2nd / 3rd order impacts are logically connected
+- [ ] Stock picks have concrete rationale
+- [ ] strategy-reviewer review is included
+- [ ] Final judgment reflects review findings
+- [ ] Report saved to the correct path

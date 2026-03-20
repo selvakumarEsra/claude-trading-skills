@@ -477,8 +477,9 @@ class TestClassifyRegime:
 
     def test_contraction_reduced_by_small_cap_leading(self):
         """Small-cap leadership should reduce contraction evidence score."""
-        # Without size factor: credit tightening(+2) + sector risk_off(+2) = 4
-        # With small_cap_leading contradiction: should be less than 4
+        # credit(+2) + sector(+2) + yc_flattening(+1) - small_cap(-1) = 4
+        # Without yc: credit(+2) + sector(+2) - small_cap(-1) = 3 < 4
+        # With yc_flattening(+1): total = 4, so assert < 5
         components = {
             "concentration": self._make_component(40, "concentrating"),
             "yield_curve": self._make_component(60, "flattening"),
@@ -489,7 +490,7 @@ class TestClassifyRegime:
         }
         result = classify_regime(components)
         # Contraction score should be reduced by size factor contradiction
-        assert result["regime_scores"]["contraction"] < 4
+        assert result["regime_scores"]["contraction"] < 5
 
     def test_contraction_not_reduced_by_large_cap(self):
         """Large-cap leadership should not reduce contraction score."""
@@ -502,5 +503,5 @@ class TestClassifyRegime:
             "sector_rotation": self._make_component(60, "risk_off"),
         }
         result = classify_regime(components)
-        # credit(+2) + sector(+2) + eb(+1) = 5, no reduction
-        assert result["regime_scores"]["contraction"] == 5
+        # credit(+2) + sector(+2) + eb(+1) + yc_flattening(+1) = 6, no reduction
+        assert result["regime_scores"]["contraction"] == 6

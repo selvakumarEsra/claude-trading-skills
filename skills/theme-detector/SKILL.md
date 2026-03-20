@@ -7,12 +7,12 @@ description: Detect and analyze trending market themes across sectors. Use when 
 
 ## Overview
 
-This skill detects and ranks trending market themes by analyzing cross-sector momentum, volume, and breadth signals. It identifies both bullish (upward momentum) and bearish (downward pressure) themes, assesses lifecycle maturity (early/mid/late/exhaustion), and provides a confidence score combining quantitative data with narrative analysis.
+This skill detects and ranks trending market themes by analyzing cross-sector momentum, volume, and breadth signals. It identifies both bullish (upward momentum) and bearish (downward pressure) themes, assesses lifecycle maturity (Emerging/Accelerating/Trending/Mature/Exhausting), and provides a confidence score combining quantitative data with narrative analysis.
 
 **3-Dimensional Scoring Model:**
 1. **Theme Heat** (0-100): Direction-neutral strength of the theme (momentum, volume, uptrend ratio, breadth)
-2. **Lifecycle Maturity**: Stage classification (Early / Mid / Late / Exhaustion) based on duration, extremity clustering, valuation, and ETF proliferation
-3. **Confidence** (Low / Medium / High): Reliability of the detection, combining quantitative breadth with narrative confirmation
+2. **Lifecycle Maturity**: Stage classification (Emerging / Accelerating / Trending / Mature / Exhausting) based on duration, extremity clustering, valuation, and ETF proliferation
+3. **Confidence** (Low / Medium / High): Reliability of the detection, combining quantitative breadth with narrative confirmation. Script output is capped at Medium; Claude's WebSearch narrative confirmation step can elevate to High.
 
 **Key Features:**
 - Cross-sector theme detection using FINVIZ industry data
@@ -65,14 +65,18 @@ echo $FMP_API_KEY
 ```
 
 **Requirements:**
-- **Python 3.7+** with `requests`, `beautifulsoup4`, `lxml`
+- **Python 3.7+** with `requests`, `beautifulsoup4`, `lxml`, `pandas`, `numpy`, `yfinance`
 - **FINVIZ Elite API key** (recommended for full industry coverage and speed)
 - **FMP API key** (optional, for P/E ratio valuation data)
 - Without FINVIZ Elite, the skill uses public FINVIZ scraping (limited to ~20 stocks per industry, slower rate limits)
 
+**Optional dependencies:**
+- `finvizfinance` (for FINVIZ Elite mode)
+- `PyYAML` (for `--themes-config` custom themes)
+
 **Installation:**
 ```bash
-pip install requests beautifulsoup4 lxml
+pip install requests beautifulsoup4 lxml pandas numpy yfinance
 ```
 
 ### Step 2: Execute Theme Detection Script
@@ -103,7 +107,7 @@ python3 skills/theme-detector/scripts/theme_detector.py \
 # Custom limits
 python3 skills/theme-detector/scripts/theme_detector.py \
   --max-themes 5 \
-  --max-stocks-per-theme 5 \
+  --max-stocks-per-theme 10 \
   --output-dir reports/
 
 # Explicit FINVIZ mode
@@ -166,7 +170,7 @@ Cross-reference detection results with knowledge bases:
 **Analysis Framework:**
 
 For **Hot Bullish Themes** (Heat >= 70, Direction = Bullish):
-- Identify lifecycle stage (Early = opportunity, Late/Exhaustion = caution)
+- Identify lifecycle stage (Emerging = opportunity, Mature/Exhausting = caution)
 - List top-performing industries within the theme
 - Recommend proxy ETFs for exposure
 - Flag if ETF proliferation is high (crowded trade warning)
@@ -175,14 +179,14 @@ For **Hot Bearish Themes** (Heat >= 70, Direction = Bearish):
 - Identify industries under pressure
 - Assess if bearish momentum is accelerating or decelerating
 - Recommend hedging strategies or sectors to avoid
-- Note potential mean-reversion opportunities if lifecycle is Late/Exhaustion
+- Note potential mean-reversion opportunities if lifecycle is Mature/Exhausting
 
-For **Emerging Themes** (Heat 40-69, Lifecycle = Early):
+For **Emerging Themes** (Heat 40-69, Lifecycle = Emerging):
 - These may represent early rotation signals
 - Recommend monitoring with watchlist
 - Identify catalyst events that could accelerate the theme
 
-For **Exhausted Themes** (Heat >= 60, Lifecycle = Exhaustion):
+For **Exhausted Themes** (Heat >= 60, Lifecycle = Exhausting):
 - Warn about crowded trade risk
 - High ETF count confirms excessive retail participation
 - Consider contrarian positioning or reducing exposure
@@ -238,16 +242,17 @@ Save the report to `reports/` directory.
   - Reads theme definitions from `cross_sector_themes.md`
   - Calculates theme-level aggregated scores
   - Determines direction (bullish/bearish) from constituent industries
+  - Display mapping: "bullish" → "LEAD", "bearish" → "LAG" (see report_generator.py::_direction_label())
 
 - `finviz_industry_scanner.py` - FINVIZ industry data collection
   - Elite mode: CSV export with full stock data per industry
   - Public mode: Web scraping with rate limiting
   - Extracts: performance, volume, change%, avg volume, market cap
 
-- `lifecycle_analyzer.py` - Lifecycle maturity assessment
+- `calculators/lifecycle_calculator.py` - Lifecycle maturity assessment
   - Duration scoring, extremity clustering, valuation analysis
   - ETF proliferation scoring from thematic_etf_catalog.md
-  - Stage classification: Early / Mid / Late / Exhaustion
+  - Stage classification: Emerging / Accelerating / Trending / Mature / Exhausting
 
 - `report_generator.py` - Report output generation
   - Markdown report from template
@@ -278,20 +283,20 @@ Save the report to `reports/` directory.
 | Stocks per industry | Full universe | ~20 stocks (page 1) |
 | Rate limiting | 0.5s between requests | 2.0s between requests |
 | Data freshness | Real-time | 15-min delayed |
-| API key required | Yes ($39.99/mo) | No |
+| API key required | Yes ($39.50/mo) | No |
 | Execution time | ~2-3 minutes | ~5-8 minutes |
 
 ### Direction Detection Logic
 
-Theme direction (bullish vs. bearish) is determined by:
-1. **Weighted industry performance**: Average change% across constituent industries, weighted by market cap
-2. **Uptrend ratio**: Percentage of stocks in each industry that are in technical uptrends (if uptrend data available)
-3. **Volume confirmation**: Whether volume supports the price direction (accumulation vs. distribution)
+Theme direction is determined by majority vote of constituent industries' relative rank:
 
-A theme is classified as:
-- **Bullish**: Weighted performance > 0 AND (uptrend ratio > 50% OR volume accumulation confirmed)
-- **Bearish**: Weighted performance < 0 AND (uptrend ratio < 50% OR volume distribution confirmed)
-- **Neutral**: Mixed signals or insufficient data
+1. **Industry ranking**: All ~145 industries are ranked by multi-timeframe momentum score
+2. **Rank-based direction**: Industries in the top half of the ranked list are classified as "bullish"; bottom half as "bearish"
+3. **Theme majority vote**: `_majority_direction()` counts bullish vs. bearish industries within each theme; the majority wins
+
+Display mapping: "bullish" → **LEAD**, "bearish" → **LAG** (see `report_generator.py::_direction_label()`)
+
+A LEAD theme indicates relative outperformance of its constituent industries. A LAG theme may still have positive absolute returns — it indicates relative underperformance, not a short signal.
 
 ### Known Limitations
 

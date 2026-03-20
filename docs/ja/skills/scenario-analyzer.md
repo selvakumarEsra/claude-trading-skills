@@ -46,9 +46,9 @@ permalink: /ja/skills/scenario-analyzer/
 
 **使用例：**
 ```
-/headline-scenario-analyzer "Fed raises interest rates by 50bp, signals more hikes ahead"
-/headline-scenario-analyzer "China announces new tariffs on US semiconductors"
-/headline-scenario-analyzer "OPEC+ agrees to cut oil production by 2 million barrels per day"
+/scenario-analyzer "Fed raises interest rates by 50bp, signals more hikes ahead"
+/scenario-analyzer "China announces new tariffs on US semiconductors"
+/scenario-analyzer "OPEC+ agrees to cut oil production by 2 million barrels per day"
 ```
 
 ---
@@ -57,6 +57,7 @@ permalink: /ja/skills/scenario-analyzer/
 
 - **APIキー：** 不要
 - **Python 3.9+** 推奨
+- **Claude Code 必須：** このスキルは `agents/` ディレクトリに定義された2つの専門エージェント（`scenario-analyst` と `strategy-reviewer`）を使用します。これらは Claude Code 環境でのみ利用可能です。`.skill` パッケージにはエージェントは含まれません。Claude Web アプリでは、エージェントなしで単一パスで全分析を実行します。
 
 ---
 
@@ -121,10 +122,10 @@ Read references/scenario_playbooks.md
 
 #### ステップ2.1: scenario-analyst 呼び出し
 
-Task toolを使用してメイン分析エージェントを呼び出します。
+Agent toolを使用してメイン分析エージェントを呼び出します。
 
 ```
-Task tool:
+Agent tool:
 - subagent_type: "scenario-analyst"
 - prompt: |
     以下のヘッドラインについて18ヶ月シナリオ分析を実行してください。
@@ -157,7 +158,7 @@ Task tool:
 scenario-analystの分析結果を受けて、レビューエージェントを呼び出します。
 
 ```
-Task tool:
+Agent tool:
 - subagent_type: "strategy-reviewer"
 - prompt: |
     以下のシナリオ分析をレビューしてください。
@@ -213,7 +214,65 @@ Task tool:
 **分析日時**: YYYY-MM-DD HH:MM
 **対象ヘッドライン**: [入力されたヘッドライン]
 **イベントタイプ**: [分類カテゴリ]
+
+---
+
+## 1. 関連ニュース記事
+[scenario-analystが収集したニュースリスト]
+
+## 2. 想定シナリオ概要（18ヶ月後まで）
+
+### Base Case（XX%確率）
+[シナリオ詳細]
+
+### Bull Case（XX%確率）
+[シナリオ詳細]
+
+### Bear Case（XX%確率）
+[シナリオ詳細]
+
+## 3. セクター・業種への影響
+
+### 1次的影響（直接的）
+[影響テーブル]
+
+### 2次的影響（バリューチェーン・関連産業）
+[影響テーブル]
+
+### 3次的影響（マクロ・規制・技術）
+[影響テーブル]
+
+## 4. ポジティブ影響が見込まれる銘柄（3-5銘柄）
+[銘柄テーブル]
+
+## 5. ネガティブ影響が見込まれる銘柄（3-5銘柄）
+[銘柄テーブル]
+
+## 6. セカンドオピニオン・レビュー
+[strategy-reviewerの出力]
+
+## 7. 最終投資判断・示唆
+
+### 推奨アクション
+[レビューを踏まえた具体的アクション]
+
+### リスク要因
+[主要リスクの列挙]
+
+### モニタリングポイント
+[フォローすべき指標・イベント]
+
+---
+**生成**: scenario-analyzer skill
+**エージェント**: scenario-analyst, strategy-reviewer
 ```
+
+#### ステップ3.3: レポート保存
+
+1. `reports/` ディレクトリが存在しない場合は作成
+2. `scenario_analysis_<topic>_YYYYMMDD.md` として保存（例: `scenario_analysis_venezuela_20260104.md`）
+3. 保存完了をユーザーに通知
+4. **プロジェクトルートに直接保存しないこと**
 
 ---
 
@@ -224,3 +283,49 @@ Task tool:
 - `skills/scenario-analyzer/references/headline_event_patterns.md`
 - `skills/scenario-analyzer/references/scenario_playbooks.md`
 - `skills/scenario-analyzer/references/sector_sensitivity_matrix.md`
+
+---
+
+## 7. 重要な注意事項
+
+### 言語
+- 全ての分析・出力は**日本語**で行う
+- 銘柄ティッカーは英語表記を維持
+
+### 対象市場
+- 銘柄選定は**米国市場上場銘柄のみ**
+- ADR含む
+
+### 時間軸
+- シナリオは**18ヶ月**を対象
+- 0-6ヶ月/6-12ヶ月/12-18ヶ月の3フェーズで記述
+
+### 確率配分
+- Base + Bull + Bear = **100%**
+- 各シナリオの確率は根拠とともに記述
+
+### セカンドオピニオン
+- **必須**で実行（strategy-reviewerを常に呼び出す）
+- レビュー結果は最終判断に反映
+
+### 出力先（重要）
+- **必ず** `reports/` ディレクトリ配下に保存すること
+- パス: `reports/scenario_analysis_<topic>_YYYYMMDD.md`
+- 例: `reports/scenario_analysis_fed_rate_hike_20260104.md`
+- `reports/` ディレクトリが存在しない場合は作成すること
+- **プロジェクトルートに直接保存してはならない**
+
+---
+
+## 8. 品質チェックリスト
+
+レポート完成前に以下を確認：
+
+- [ ] ヘッドラインが正しく解析されているか
+- [ ] イベントタイプの分類が適切か
+- [ ] 3シナリオの確率合計が100%か
+- [ ] 1次/2次/3次影響の論理的繋がりがあるか
+- [ ] 銘柄選定に具体的な根拠があるか
+- [ ] strategy-reviewerのレビューが含まれているか
+- [ ] レビューを踏まえた最終判断が記載されているか
+- [ ] レポートが正しいパスに保存されたか
