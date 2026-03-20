@@ -44,13 +44,6 @@ Detects market top probability using O'Neil Distribution Days, Minervini Leading
 - User asks about reducing equity exposure timing
 - User wants to assess correction probability for the next 2-8 weeks
 
-**Japanese:**
-- 「天井が近い？」「今は利確すべき？」
-- ディストリビューションデーの蓄積を懸念
-- ディフェンシブセクターがグロースをアウトパフォーム
-- 先導株が崩れ始めているが指数はまだ持ちこたえている
-- エクスポージャー縮小のタイミング判断
-- 今後2〜8週間の調整確率を評価したい
 
 ---
 
@@ -196,3 +189,4 @@ Present the generated Markdown report to the user, highlighting:
 - `skills/market-top-detector/scripts/report_generator.py`
 - `skills/market-top-detector/scripts/scenario_engine.py`
 - `skills/market-top-detector/scripts/scorer.py`
+- `skills/market-top-detector/scripts/utils.py`

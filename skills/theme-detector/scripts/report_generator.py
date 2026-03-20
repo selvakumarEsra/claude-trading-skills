@@ -259,7 +259,7 @@ def generate_markdown_report(json_data: dict, top_n_detail: int = 3) -> str:
     )
     lines.append(
         "4. **Lifecycle Stage:** Theme maturity assessed via "
-        "early/growth/mature/decline classification"
+        "Emerging/Accelerating/Trending/Mature/Exhausting classification"
     )
     lines.append("5. **Uptrend Overlay:** Monty's sector uptrend ratios provide breadth context")
     lines.append("")
@@ -271,7 +271,7 @@ def generate_markdown_report(json_data: dict, top_n_detail: int = 3) -> str:
     lines.append("")
     lines.append(
         "**Note on Direction:** Theme direction (LEAD/LAG) is based on "
-        "**relative industry rank** (top-half vs bottom-half), not absolute "
+        "**relative performance of matched industries**, not absolute "
         "price change. A LAG theme may still have positive returns — it "
         "indicates relative underperformance, not a short signal."
     )
@@ -438,8 +438,8 @@ def _direction_label(direction: Optional[str]) -> str:
     """Format direction for display.
 
     Uses LEAD/LAG instead of BULL/BEAR because direction is determined
-    by relative rank (top-half vs bottom-half of industries), not by
-    absolute price change. A 'LAG' theme may still have positive returns.
+    by relative performance of matched industries, not by absolute
+    price change. A 'LAG' theme may still have positive returns.
     """
     if direction == "bullish":
         return "LEAD"
@@ -521,6 +521,22 @@ def _add_theme_details(lines: list[str], themes: list[dict]) -> None:
     for t in themes:
         lines.append(f"### {t.get('name', 'Unknown Theme')}")
         lines.append("")
+
+        # Lifecycle data insufficient badge
+        if t.get("lifecycle_data_quality") == "insufficient":
+            lines.append(
+                "> **[Lifecycle data insufficient]** "
+                "Maturity values are defaults; no stock metrics available."
+            )
+            lines.append("")
+
+        # Discovered theme provisional badge
+        if t.get("theme_origin") == "discovered":
+            lines.append(
+                "> **[Discovered - provisional]** Theme name and boundaries are auto-generated."
+            )
+            lines.append("")
+
         # Show origin line for discovered themes (seed/vertical are self-evident)
         t_origin = t.get("theme_origin", "seed")
         if t_origin == "discovered":

@@ -79,6 +79,21 @@ testpaths = [
     # canslim-screener excluded: requires bs4 (optional dep)
     "skills/skill-integration-tester/scripts/tests",
     "skills/trader-memory-core/scripts/tests",
+    "skills/breadth-chart-analyst/scripts/tests",
+    "skills/economic-calendar-fetcher/scripts/tests",
+    "skills/edge-candidate-agent/scripts/tests",
+    "skills/edge-concept-synthesizer/scripts/tests",
+    "skills/edge-hint-extractor/scripts/tests",
+    "skills/edge-strategy-designer/scripts/tests",
+    "skills/exposure-coach/scripts/tests",
+    "skills/finviz-screener/scripts/tests",
+    "skills/kanchi-dividend-review-monitor/scripts/tests",
+    "skills/kanchi-dividend-sop/scripts/tests",
+    "skills/kanchi-dividend-us-tax-accounting/scripts/tests",
+    "skills/market-environment-analysis/scripts/tests",
+    "skills/sector-analyst/scripts/tests",
+    "skills/strategy-pivot-designer/scripts/tests",
+    # pair-trade-screener, portfolio-manager, signal-postmortem: tests/ exists but no test_*.py
     "scripts/tests",
 ]
 

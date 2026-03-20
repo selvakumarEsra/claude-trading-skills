@@ -111,15 +111,17 @@ def calculate_volume_pattern(
             score += 10
 
     # Modifier: Net accumulation/distribution in last 20 days
+    # Only count days where volume exceeds 50-day average (institutional activity)
     up_vol_days = 0
     down_vol_days = 0
     analysis_period = min(20, len(closes) - 1)
 
     for i in range(analysis_period):
-        if i + 1 < len(closes) and closes[i] > closes[i + 1]:
-            up_vol_days += 1
-        elif i + 1 < len(closes) and closes[i] < closes[i + 1]:
-            down_vol_days += 1
+        if i + 1 < len(closes) and volumes[i] > avg_volume_50d:
+            if closes[i] > closes[i + 1]:
+                up_vol_days += 1
+            elif closes[i] < closes[i + 1]:
+                down_vol_days += 1
 
     net_accumulation = up_vol_days - down_vol_days
     if net_accumulation > 3:

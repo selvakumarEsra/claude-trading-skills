@@ -469,12 +469,21 @@ def parse_args() -> argparse.Namespace:
         default=False,
         help="Forward --no-dedup to concepts stage (disable deduplication)",
     )
+    parser.add_argument(
+        "--exportable-families",
+        default=None,
+        help="Comma-separated list of strategy families eligible for export (overrides default)",
+    )
     return parser.parse_args()
 
 
 def main() -> int:
     """CLI entrypoint."""
+    global EXPORTABLE_FAMILIES
     args = parse_args()
+
+    if args.exportable_families:
+        EXPORTABLE_FAMILIES = set(args.exportable_families.split(","))
 
     output_dir = Path(args.output_dir).resolve()
     output_dir.mkdir(parents=True, exist_ok=True)

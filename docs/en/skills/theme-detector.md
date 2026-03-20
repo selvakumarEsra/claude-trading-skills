@@ -41,7 +41,7 @@ The Theme Detector identifies which market themes (AI & Semiconductors, Clean En
 | Dimension | Range | What It Measures |
 |-----------|-------|-----------------|
 | **Theme Heat** | 0-100 | Strength of the theme: momentum, volume intensity, uptrend ratio, breadth |
-| **Lifecycle Maturity** | Early / Mid / Late / Exhaustion | How developed the theme is: duration, RSI extremity, valuation, ETF proliferation |
+| **Lifecycle Maturity** | Emerging / Accelerating / Trending / Mature / Exhausting | How developed the theme is: duration, RSI extremity, valuation, ETF proliferation |
 | **Confidence** | Low / Medium / High | Reliability of detection: quantitative breadth combined with narrative confirmation |
 
 **14+ themes tracked:** AI & Semiconductors, Clean Energy & EV, Cybersecurity, Cloud Computing & SaaS, Biotech & Genomics, Infrastructure & Construction, Gold & Precious Metals, Defense & Aerospace, Energy (Oil & Gas), Consumer Staples & Defensive, Financial & Banking, Real Estate, Blockchain & Crypto, Healthcare Innovation.
@@ -65,11 +65,15 @@ The Theme Detector identifies which market themes (AI & Semiconductors, Clean En
 pip install requests beautifulsoup4 lxml pandas numpy yfinance
 ```
 
+**Optional Python packages:**
+- `finvizfinance` (for FINVIZ Elite mode)
+- `PyYAML` (for `--themes-config` custom themes)
+
 **Optional APIs for enhanced results:**
 
 | API | Benefit | Cost |
 |-----|---------|------|
-| FINVIZ Elite | Full stock universe per industry, faster execution (~2-3 min vs 5-8 min), real-time data | $39.99/mo |
+| FINVIZ Elite | Full stock universe per industry, faster execution (~2-3 min vs 5-8 min), real-time data | $39.50/mo |
 | FMP API | P/E ratio valuation data for lifecycle assessment, ETF holdings for theme confirmation | Free tier: 250/day |
 
 > The skill works fully without any API keys. FINVIZ Elite and FMP enhance coverage and speed but are not required.
@@ -87,6 +91,9 @@ python3 skills/theme-detector/scripts/theme_detector.py --output-dir reports/
 # "What market themes are trending right now?"
 ```
 
+> **Note:** Script-only output caps Confidence at Medium (2 of 3 confirmation layers). Claude's WebSearch narrative confirmation can elevate to High.
+{: .tip }
+
 ---
 
 ## 4. How It Works
@@ -97,7 +104,7 @@ python3 skills/theme-detector/scripts/theme_detector.py --output-dir reports/
    - **Momentum strength** -- Multi-timeframe performance weighting
    - **Volume intensity** -- Current volume vs historical average
    - **Uptrend ratio** -- Percentage of constituent stocks in technical uptrends
-   - **Breadth** -- How broadly the theme's industries participate
+   - **Breadth** -- Ratio of matching industries with directionally-aligned weighted returns (positive for LEAD themes, negative for LAG themes). Industry-level participation rate, not stock-level
 4. **Lifecycle assessment** -- Determines maturity stage from:
    - **Duration score** -- How long the theme has been active
    - **Extremity clustering** -- Concentration of RSI readings at extremes
@@ -151,10 +158,11 @@ Is the AI theme still early or getting crowded?
 - **Valuation premium:** Current P/E vs historical average for semiconductor/software stocks
 
 **Interpretation:**
-- **Early (0-25 maturity):** Few participants, low ETF count, theme just starting -- best time to enter
-- **Mid (25-50):** Growing participation, some ETFs launched, media coverage increasing
-- **Late (50-75):** Broad participation, multiple ETFs, consensus trade, valuations stretched
-- **Exhaustion (75-100):** Maximum ETF proliferation, extreme valuations, contrarian signals appearing
+- **Emerging (0-20 maturity):** Few participants, low ETF count, theme just starting -- best time to enter
+- **Accelerating (20-40):** Growing participation, some ETFs launched, media coverage increasing
+- **Trending (40-60):** Strong momentum, broad analyst coverage, mainstream theme
+- **Mature (60-80):** Broad participation, multiple ETFs, consensus trade, valuations stretched
+- **Exhausting (80-100):** Maximum ETF proliferation, extreme valuations, contrarian signals appearing
 
 ---
 
@@ -167,7 +175,7 @@ What are the strongest bearish themes in the market right now?
 
 **What happens:** The detector identifies themes with negative weighted performance where uptrend ratios are below 50% and volume confirms distribution (selling pressure). These are presented with the same Heat/Lifecycle/Confidence scoring as bullish themes, using inverted indicators.
 
-**Why useful:** Bearish themes reveal which sectors to avoid, hedge against, or watch for mean-reversion opportunities if the lifecycle reaches Exhaustion.
+**Why useful:** Bearish themes reveal which sectors to avoid, hedge against, or watch for mean-reversion opportunities if the lifecycle reaches Exhausting.
 
 ---
 
@@ -177,15 +185,15 @@ The Heat score combines four sub-components:
 
 | Heat Score | Interpretation | Action |
 |------------|---------------|--------|
-| 80-100 | Extremely strong momentum + volume + breadth | Consider exposure if lifecycle is Early/Mid |
+| 80-100 | Extremely strong momentum + volume + breadth | Consider exposure if lifecycle is Emerging/Accelerating |
 | 60-79 | Solid theme momentum with broad participation | Standard allocation, monitor lifecycle |
 | 40-59 | Moderate theme signal, may be emerging or fading | Watchlist, wait for confirmation |
 | 20-39 | Weak theme signal | Do not allocate, monitor for reversal |
 | 0-19 | No meaningful theme activity | Ignore |
 
-**The golden combination:** High Heat + Early lifecycle = Best opportunity. The theme has strong momentum but has not yet attracted the crowd.
+**The golden combination:** High Heat + Emerging lifecycle = Best opportunity. The theme has strong momentum but has not yet attracted the crowd.
 
-> High Heat + Late/Exhaustion lifecycle = Caution. Strong momentum but the trade is crowded and at risk of reversal.
+> High Heat + Mature/Exhausting lifecycle = Caution. Strong momentum but the trade is crowded and at risk of reversal.
 {: .warning }
 
 ---
@@ -197,7 +205,7 @@ The Heat score combines four sub-components:
 What market themes are trending right now?
 ```
 
-Suppose Theme Detector identifies "AI & Semiconductors" as the top bullish theme (Heat: 85, Lifecycle: Mid, Confidence: High).
+Suppose Theme Detector identifies "AI & Semiconductors" as the top bullish theme (Heat: 85, Lifecycle: Accelerating, Confidence: Medium).
 
 **Step 2 -- Research individual stocks:**
 ```
@@ -236,16 +244,23 @@ The detector generates:
 7. **Methodology Notes** -- Brief explanation of the scoring model
 
 **Direction classification:**
-- **Bullish:** Weighted performance > 0 AND (uptrend ratio > 50% OR volume accumulation confirmed)
-- **Bearish:** Weighted performance < 0 AND (uptrend ratio < 50% OR volume distribution confirmed)
-- **Neutral:** Mixed signals or insufficient data
+
+Direction is determined by majority vote of constituent industries' relative rank:
+1. All ~145 industries are ranked by multi-timeframe momentum score
+2. Top-half industries = "bullish", bottom-half = "bearish"
+3. Each theme's direction is the majority vote of its matched industries
+
+**Display mapping:**
+- "bullish" → **LEAD** (relative outperformance of matched industries)
+- "bearish" → **LAG** (relative underperformance of matched industries)
+- A LAG theme may have positive absolute returns -- it indicates relative underperformance, not a short signal
 
 ---
 
 ## 7. Tips & Best Practices
 
 - **Run weekly for strategic allocation.** Theme trends shift on a weekly-to-monthly timeframe. Daily scans add noise without changing conclusions.
-- **Combine Heat with Lifecycle for decision-making.** Heat alone can be misleading -- a theme with Heat 90 and Exhaustion lifecycle may be about to reverse.
+- **Combine Heat with Lifecycle for decision-making.** Heat alone can be misleading -- a theme with Heat 90 and Exhausting lifecycle may be about to reverse.
 - **Use proxy ETFs for quick exposure.** Each theme includes proxy ETFs (e.g., SMH/SOXX for AI & Semiconductors, XBI/IBB for Biotech). These provide immediate, diversified theme exposure.
 - **Watch ETF proliferation as a contrarian signal.** When many new thematic ETFs launch, it typically indicates late-cycle retail participation. The more ETFs tracking a theme, the closer it may be to exhaustion.
 - **Cross-reference with narrative.** Quantitative High + Narrative Weak is a divergence signal (momentum without conviction). Quantitative Low + Narrative Strong may indicate an emerging theme where price action has not yet caught up.
@@ -261,7 +276,7 @@ The detector generates:
 | **Theme + CANSLIM** | Identify strong themes, then run CANSLIM Screener with a custom `--universe` of stocks from that theme to find the best growth candidates |
 | **Macro alignment** | Run Theme Detector alongside Market Environment Analysis and Sector Analyst to verify that theme strength aligns with broader macro conditions |
 | **Bearish theme hedging** | When bearish themes are detected, use Options Strategy Advisor to evaluate protective strategies (puts, put spreads) on exposed holdings |
-| **Lifecycle monitoring** | Track theme lifecycle stage monthly. When a previously Early theme moves to Late, consider reducing exposure and rotating into newer themes |
+| **Lifecycle monitoring** | Track theme lifecycle stage monthly. When a previously Emerging theme moves to Mature, consider reducing exposure and rotating into newer themes |
 | **Scenario analysis** | Use Scenario Analyzer to project how current news headlines may affect specific themes, then cross-check with Theme Detector's quantitative scoring |
 
 ---
@@ -272,7 +287,7 @@ The detector generates:
 
 **Expected behavior:** Public FINVIZ mode takes 5-8 minutes due to rate limiting (2.0 seconds between requests for ~145 industries).
 
-**Fix:** If speed is critical, set up FINVIZ Elite ($39.99/mo) for 2-3 minute execution with `--finviz-api-key`.
+**Fix:** If speed is critical, set up FINVIZ Elite ($39.50/mo) for 2-3 minute execution with `--finviz-api-key`.
 
 ### Missing Python dependencies
 
@@ -287,9 +302,9 @@ pip install requests beautifulsoup4 lxml pandas numpy yfinance
 
 ### "Theme not detected" for a specific theme
 
-**Cause:** The theme requires a minimum number of constituent industries showing activity (`min_matching_industries` in theme definitions). If too few industries have meaningful data, the theme is not classified.
+**Cause:** Theme detection requires a minimum number of matching industries with activity. The global `cross_sector_min_matches` setting (default: 2, configurable in themes.yaml) controls this threshold. If too few industries have meaningful data, the theme is not classified.
 
-**Fix:** This is expected behavior for themes with narrow industry representation. Check `references/cross_sector_themes.md` for the minimum matching industries for each theme. FINVIZ Elite provides better coverage and may resolve this.
+**Fix:** This is expected behavior for themes with narrow industry representation. Check `references/cross_sector_themes.md` for design-intent minimums. FINVIZ Elite provides better coverage and may resolve this.
 
 ### Limited data in public mode
 
@@ -312,12 +327,17 @@ WebSearch-based narrative confirmation depends on internet connectivity and sear
 
 | Argument | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `--output-dir` | No | `.` | Output directory for reports |
+| `--output-dir` | No | `reports/` | Output directory for reports |
 | `--finviz-api-key` | No | `$FINVIZ_API_KEY` | FINVIZ Elite API key |
 | `--fmp-api-key` | No | `$FMP_API_KEY` | FMP API key for valuation data |
-| `--max-themes` | No | `10` | Maximum themes in report |
-| `--max-stocks-per-theme` | No | `5` | Max representative stocks per theme |
 | `--finviz-mode` | No | Auto-detected | Force `public` or `elite` mode |
+| `--max-themes` | No | `10` | Maximum themes in report |
+| `--max-stocks-per-theme` | No | `10` | Max representative stocks per theme |
+| `--top` | No | `3` | Top N themes in detail sections |
+| `--themes-config` | No | bundled `themes.yaml` | Custom themes YAML path |
+| `--discover-themes` | No | `false` | Auto-discover themes from unmatched industries |
+| `--dynamic-stocks` | No | `false` | Dynamic stock selection via FINVIZ |
+| `--dynamic-min-cap` | No | `small` | Min market cap for dynamic stocks (micro/small/mid) |
 
 ### FINVIZ Mode Comparison
 
@@ -327,7 +347,7 @@ WebSearch-based narrative confirmation depends on internet connectivity and sear
 | Stocks per industry | Full universe | ~20 stocks (page 1) |
 | Rate limiting | 0.5s between requests | 2.0s between requests |
 | Data freshness | Real-time | 15-minute delayed |
-| API key required | Yes ($39.99/mo) | No |
+| API key required | Yes ($39.50/mo) | No |
 | Execution time | ~2-3 minutes | ~5-8 minutes |
 
 ### Theme Heat Sub-Components
@@ -337,16 +357,17 @@ WebSearch-based narrative confirmation depends on internet connectivity and sear
 | Momentum Strength | Multi-timeframe performance weighting across theme industries |
 | Volume Intensity | Current volume vs historical average for theme stocks |
 | Uptrend Ratio | Percentage of theme stocks in technical uptrends |
-| Breadth | How many of the theme's constituent industries participate in the move |
+| Breadth | Ratio of matching industries with directionally-aligned weighted returns (industry-level participation) |
 
 ### Lifecycle Stages
 
 | Stage | Maturity | Characteristics |
 |-------|----------|----------------|
-| Early | 0-25 | Few participants, low ETF count, limited media coverage |
-| Mid | 25-50 | Growing participation, ETFs launching, analyst upgrades |
-| Late | 50-75 | Broad participation, many ETFs, consensus trade, elevated valuations |
-| Exhaustion | 75-100 | Max ETF proliferation, extreme valuations, contrarian signals |
+| Emerging | 0-20 | Few participants, low ETF count, limited media coverage |
+| Accelerating | 20-40 | Growing participation, ETFs launching, analyst upgrades |
+| Trending | 40-60 | Strong momentum, broad analyst coverage, mainstream theme |
+| Mature | 60-80 | Broad participation, many ETFs, consensus trade, elevated valuations |
+| Exhausting | 80-100 | Max ETF proliferation, extreme valuations, contrarian signals |
 
 ### Cross-Sector Themes Reference
 

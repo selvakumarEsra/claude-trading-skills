@@ -16,6 +16,9 @@ Mine Claude Code session logs for skill idea candidates. Use when running the we
 
 <span class="badge badge-free">No API</span>
 
+[Download Skill Package (.skill)](https://github.com/tradermonty/claude-trading-skills/raw/main/skill-packages/skill-idea-miner.skill){: .btn .btn-primary .fs-5 .mb-4 .mb-md-0 .mr-2 }
+[View Source on GitHub](https://github.com/tradermonty/claude-trading-skills/tree/main/skills/skill-idea-miner){: .btn .fs-5 .mb-4 .mb-md-0 }
+
 <details open markdown="block">
   <summary>Table of Contents</summary>
   {: .text-delta }

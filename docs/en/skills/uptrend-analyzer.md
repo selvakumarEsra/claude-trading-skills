@@ -43,12 +43,6 @@ Analyzes market breadth using Monty's Uptrend Ratio Dashboard data to diagnose t
 - User needs exposure guidance based on breadth analysis
 - User references Monty's Uptrend Dashboard or uptrend ratios
 
-**Japanese:**
-- 「市場のブレドスは健全？」「上昇の裾野は広い？」
-- セクター別のアップトレンド比率を確認したい
-- 相場参加率・ブレドス状況を診断したい
-- ブレドス分析に基づくエクスポージャーガイダンスが欲しい
-- Montyのアップトレンドダッシュボードについて質問
 
 ---
 

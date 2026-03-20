@@ -270,10 +270,17 @@ def _format_stock_entry(rank: int, stock: dict) -> list[str]:
     stop_loss = piv.get("stop_loss_price")
     risk_pct = piv.get("risk_pct")
     dist = piv.get("distance_from_pivot_pct")
+    trade_status = piv.get("trade_status", "")
 
     lines.append("**Trade Setup:**")
 
-    if dist is not None and dist > 10:
+    if trade_status == "BELOW STOP LEVEL":
+        # Stop violated: setup is invalidated
+        lines.append(f"- Pivot: ${pivot_price:.2f}" if pivot_price else "- Pivot: N/A")
+        lines.append(f"- Stop-loss: ${stop_loss:.2f}" if stop_loss else "- Stop-loss: N/A")
+        lines.append("- **STOP VIOLATED:** Price is below stop-loss level — setup invalidated.")
+        lines.append("- Action: Do not enter. Wait for a new base to form.")
+    elif dist is not None and dist > 10:
         # Overextended: trade missed
         lines.append(
             f"- Original pivot: ${pivot_price:.2f} (current price is +{dist:.1f}% above)"
@@ -305,9 +312,10 @@ def _format_stock_entry(rank: int, stock: dict) -> list[str]:
         lines.append(f"- Risk: {risk_pct:.1f}%" if risk_pct is not None else "- Risk: N/A")
 
     guidance = stock.get("guidance", "N/A")
-    trade_status = piv.get("trade_status", "")
 
-    if "EXTENDED" in trade_status or "OVEREXTENDED" in trade_status:
+    if trade_status == "BELOW STOP LEVEL":
+        guidance = "STOP VIOLATED — setup invalidated. Do not enter."
+    elif "EXTENDED" in trade_status or "OVEREXTENDED" in trade_status:
         dist_val = piv.get("distance_from_pivot_pct", 0)
         guidance += (
             f" | WARNING: Stock is +{dist_val:.1f}% above pivot - "

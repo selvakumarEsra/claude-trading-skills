@@ -135,6 +135,58 @@ class TestMarkdownReportWithDelta:
         finally:
             os.unlink(path)
 
+    def test_report_with_none_strongest_weakest(self):
+        """Report should handle None component for strongest/weakest."""
+        analysis = self._make_analysis()
+        # Override strongest/weakest to None
+        analysis["composite"]["strongest_warning"] = {
+            "component": None,
+            "label": "N/A",
+            "score": 0,
+        }
+        analysis["composite"]["weakest_warning"] = {
+            "component": None,
+            "label": "N/A",
+            "score": 0,
+        }
+
+        with tempfile.NamedTemporaryFile(suffix=".md", delete=False) as f:
+            path = f.name
+
+        try:
+            generate_markdown_report(analysis, path)
+            with open(path) as f:
+                content = f.read()
+            assert "N/A" in content
+            # Should not crash
+        finally:
+            os.unlink(path)
+
+    def test_report_with_partial_data_count(self):
+        """Report should include partial data note when partial_data_count > 0."""
+        analysis = self._make_analysis()
+        analysis["components"]["leading_stocks"] = {
+            "score": 50,
+            "signal": "TEST",
+            "etfs_evaluated": 8,
+            "etfs_deteriorating": 3,
+            "deteriorating_pct": 37.5,
+            "amplified": False,
+            "partial_data_count": 2,
+            "etf_details": {},
+        }
+
+        with tempfile.NamedTemporaryFile(suffix=".md", delete=False) as f:
+            path = f.name
+
+        try:
+            generate_markdown_report(analysis, path)
+            with open(path) as f:
+                content = f.read()
+            assert "2 ETF(s) had insufficient history" in content
+        finally:
+            os.unlink(path)
+
     def test_first_run_note(self):
         """First run delta should show note."""
         delta = {

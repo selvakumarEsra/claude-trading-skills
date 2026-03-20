@@ -9,7 +9,7 @@ description: |
   トリガー: ニュース分析、シナリオ分析、18ヶ月展望、中長期投資戦略
 ---
 
-# Headline Scenario Analyzer
+# Scenario Analyzer
 
 ## Overview
 
@@ -29,9 +29,9 @@ description: |
 
 **使用例:**
 ```
-/headline-scenario-analyzer "Fed raises interest rates by 50bp, signals more hikes ahead"
-/headline-scenario-analyzer "China announces new tariffs on US semiconductors"
-/headline-scenario-analyzer "OPEC+ agrees to cut oil production by 2 million barrels per day"
+/scenario-analyzer "Fed raises interest rates by 50bp, signals more hikes ahead"
+/scenario-analyzer "China announces new tariffs on US semiconductors"
+/scenario-analyzer "OPEC+ agrees to cut oil production by 2 million barrels per day"
 ```
 
 ## Architecture
@@ -105,10 +105,10 @@ Read references/scenario_playbooks.md
 
 #### Step 2.1: scenario-analyst 呼び出し
 
-Task toolを使用してメイン分析エージェントを呼び出します。
+Agent toolを使用してメイン分析エージェントを呼び出します。
 
 ```
-Task tool:
+Agent tool:
 - subagent_type: "scenario-analyst"
 - prompt: |
     以下のヘッドラインについて18ヶ月シナリオ分析を実行してください。
@@ -141,7 +141,7 @@ Task tool:
 scenario-analystの分析結果を受けて、レビューエージェントを呼び出します。
 
 ```
-Task tool:
+Agent tool:
 - subagent_type: "strategy-reviewer"
 - prompt: |
     以下のシナリオ分析をレビューしてください。

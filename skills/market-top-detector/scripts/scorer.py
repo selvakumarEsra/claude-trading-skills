@@ -111,34 +111,34 @@ def calculate_composite_score(
     adjusted_scores = corr_result["adjusted_scores"]
     correlation_adjustment = corr_result["adjustments"]
 
-    # Calculate weighted composite using adjusted scores
-    # Redistribute weight from unavailable components to available ones
+    # Build effective weights once: redistribute from unavailable to available
     available_weight = 0.0
     for key, weight in COMPONENT_WEIGHTS.items():
         if data_availability.get(key, True):
             available_weight += weight
 
-    composite = 0.0
+    effective_weights = {}
     for key, weight in COMPONENT_WEIGHTS.items():
-        if not data_availability.get(key, True):
-            continue
+        if data_availability.get(key, True):
+            effective_weights[key] = weight / available_weight if available_weight > 0 else weight
+
+    # Calculate weighted composite using adjusted scores and effective weights
+    composite = 0.0
+    for key in effective_weights:
         score = adjusted_scores.get(key, 0)
-        if available_weight > 0:
-            composite += score * (weight / available_weight)
-        else:
-            composite += score * weight
+        composite += score * effective_weights[key]
 
     composite = round(composite, 1)
 
-    # Identify strongest and weakest warning signals (use original scores)
-    valid_scores = {k: v for k, v in component_scores.items() if k in COMPONENT_WEIGHTS}
+    # Identify strongest and weakest from available components only
+    available_scores = {k: v for k, v in component_scores.items() if k in effective_weights}
 
-    if valid_scores:
-        strongest_warning = max(valid_scores, key=valid_scores.get)
-        weakest_warning = min(valid_scores, key=valid_scores.get)
+    if available_scores:
+        strongest_warning = max(available_scores, key=available_scores.get)
+        weakest_warning = min(available_scores, key=available_scores.get)
     else:
-        strongest_warning = "N/A"
-        weakest_warning = "N/A"
+        strongest_warning = None
+        weakest_warning = None
 
     # Get zone interpretation
     zone_info = _interpret_zone(composite)
@@ -172,6 +172,25 @@ def calculate_composite_score(
         "missing_components": missing_components,
     }
 
+    # Build strongest/weakest dicts (handle None when no available components)
+    if strongest_warning is not None:
+        strongest_dict = {
+            "component": strongest_warning,
+            "label": COMPONENT_LABELS.get(strongest_warning, strongest_warning),
+            "score": available_scores.get(strongest_warning, 0),
+        }
+    else:
+        strongest_dict = {"component": None, "label": "N/A", "score": 0}
+
+    if weakest_warning is not None:
+        weakest_dict = {
+            "component": weakest_warning,
+            "label": COMPONENT_LABELS.get(weakest_warning, weakest_warning),
+            "score": available_scores.get(weakest_warning, 0),
+        }
+    else:
+        weakest_dict = {"component": None, "label": "N/A", "score": 0}
+
     return {
         "composite_score": composite,
         "zone": zone_info["zone"],
@@ -179,16 +198,8 @@ def calculate_composite_score(
         "risk_budget": zone_info["risk_budget"],
         "guidance": zone_info["guidance"],
         "actions": zone_info["actions"],
-        "strongest_warning": {
-            "component": strongest_warning,
-            "label": COMPONENT_LABELS.get(strongest_warning, strongest_warning),
-            "score": valid_scores.get(strongest_warning, 0),
-        },
-        "weakest_warning": {
-            "component": weakest_warning,
-            "label": COMPONENT_LABELS.get(weakest_warning, weakest_warning),
-            "score": valid_scores.get(weakest_warning, 0),
-        },
+        "strongest_warning": strongest_dict,
+        "weakest_warning": weakest_dict,
         "data_quality": data_quality,
         "correlation_adjustment": correlation_adjustment,
         "component_scores": {
@@ -196,7 +207,9 @@ def calculate_composite_score(
                 "score": component_scores.get(k, 0),
                 "adjusted_score": adjusted_scores.get(k, component_scores.get(k, 0)),
                 "weight": w,
-                "weighted_contribution": round(adjusted_scores.get(k, 0) * w, 1),
+                "weighted_contribution": round(adjusted_scores.get(k, 0) * effective_weights[k], 1)
+                if k in effective_weights
+                else 0.0,
                 "label": COMPONENT_LABELS[k],
             }
             for k, w in COMPONENT_WEIGHTS.items()
@@ -371,50 +384,48 @@ def detect_follow_through_day(index_history: list[dict], composite_score: float)
             "rally_day_count": 0,
         }
 
-    # Step 2: Find Rally Day 1 (first up day after swing low)
+    # Step 2 & 3: Find Rally Day 1 and count rally days with reset handling
+    # Uses seeking_rally_day_1 flag to properly re-seek Day 1 after resets.
+    # TODO: FTD logic here mirrors ftd-detector skill's state machine.
+    #       Consider extracting shared FTD core if both need changes.
     rally_day_1_idx = None
-    for i in range(swing_low_idx + 1, n):
-        curr_close = history[i].get("close", 0)
-        prev_close = history[i - 1].get("close", 0)
-        if prev_close > 0 and curr_close > prev_close:
-            rally_day_1_idx = i
-            break
-
-    if rally_day_1_idx is None:
-        return {
-            "ftd_detected": False,
-            "applicable": True,
-            "reason": "No rally attempt started after swing low",
-            "rally_day_count": 0,
-            "swing_low_date": history[swing_low_idx].get("date", "N/A"),
-            "swing_low_price": swing_low_price,
-        }
-
-    # Step 3: Count rally days and check for FTD / reset
     rally_day_count = 0
     ftd_detected = False
     ftd_day = None
+    seeking_rally_day_1 = True
+    reset_count = 0
 
-    for i in range(rally_day_1_idx, n):
+    for i in range(swing_low_idx + 1, n):
         curr_close = history[i].get("close", 0)
+        prev_close = history[i - 1].get("close", 0) if i > 0 else 0
 
         # Check for rally reset: price closes below swing low
         if curr_close < swing_low_price:
-            # Try to find a new swing low from here
             swing_low_idx = i
             swing_low_price = curr_close
             rally_day_count = 0
             ftd_detected = False
-            # Look for new rally day 1
+            seeking_rally_day_1 = True
+            reset_count += 1
+            rally_day_1_idx = None
             continue
 
-        prev_close = history[i - 1].get("close", 0) if i > 0 else 0
+        # Seek Rally Day 1: first up close (or range top 50%) after swing low
+        if seeking_rally_day_1:
+            if prev_close <= 0:
+                continue
+            high = history[i].get("high", curr_close)
+            low = history[i].get("low", curr_close)
+            bar_range = high - low
+            range_position = (curr_close - low) / bar_range if bar_range > 0 else 0
+            if curr_close > prev_close or range_position >= 0.5:
+                rally_day_1_idx = i
+                rally_day_count = 1
+                seeking_rally_day_1 = False
+            continue
 
-        if prev_close > 0 and curr_close > prev_close:
-            rally_day_count += 1
-        elif prev_close > 0 and curr_close <= prev_close:
-            # Down day during rally - still count toward rally days
-            rally_day_count += 1
+        # Normal rally day counting (all days after Day 1 count)
+        rally_day_count += 1
 
         # Check FTD on days 4-7
         if 4 <= rally_day_count <= 7 and prev_close > 0:
@@ -426,6 +437,17 @@ def detect_follow_through_day(index_history: list[dict], composite_score: float)
                 ftd_detected = True
                 ftd_day = history[i].get("date", f"day-{i}")
                 break
+
+    if rally_day_1_idx is None:
+        return {
+            "ftd_detected": False,
+            "applicable": True,
+            "reason": "No rally attempt started after swing low",
+            "rally_day_count": 0,
+            "swing_low_date": history[swing_low_idx].get("date", "N/A"),
+            "swing_low_price": swing_low_price,
+            "reset_count": reset_count,
+        }
 
     # Cap rally_day_count for reporting
     days_since_rally_start = n - rally_day_1_idx
@@ -453,6 +475,7 @@ def detect_follow_through_day(index_history: list[dict], composite_score: float)
         "ftd_day": ftd_day,
         "swing_low_date": swing_low_date,
         "swing_low_price": swing_low_price,
+        "reset_count": reset_count,
         "reason": reason,
     }
 

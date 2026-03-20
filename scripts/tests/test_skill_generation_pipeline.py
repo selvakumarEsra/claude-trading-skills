@@ -1183,3 +1183,78 @@ def test_write_daily_generation_summary_idea_none(pipeline_module, tmp_path: Pat
     content = summary_files[0].read_text(encoding="utf-8")
     assert "Idea: N/A" in content
     assert "unknown" in content
+
+
+# -- register_testpaths tests --
+
+
+def _make_pyproject(tmp_path: Path, existing_skills: list[str] | None = None) -> Path:
+    """Create a minimal pyproject.toml with testpaths section."""
+    entries = ""
+    if existing_skills:
+        for s in existing_skills:
+            entries += f'    "skills/{s}/scripts/tests",\n'
+    content = (
+        "[tool.pytest.ini_options]\n"
+        'addopts = "--import-mode=importlib"\n'
+        "testpaths = [\n"
+        f"{entries}"
+        '    "scripts/tests",\n'
+        "]\n"
+    )
+    pyproject = tmp_path / "pyproject.toml"
+    pyproject.write_text(content)
+    return pyproject
+
+
+def test_register_testpaths_adds_entry(pipeline_module, tmp_path: Path):
+    """New skill with test_*.py files gets registered in testpaths."""
+    _make_pyproject(tmp_path)
+    test_dir = tmp_path / "skills" / "new-skill" / "scripts" / "tests"
+    test_dir.mkdir(parents=True)
+    (test_dir / "test_example.py").write_text("def test_ok(): pass\n")
+
+    result = pipeline_module.register_testpaths(tmp_path, "new-skill")
+
+    assert result is True
+    content = (tmp_path / "pyproject.toml").read_text()
+    assert "skills/new-skill/scripts/tests" in content
+    # Should appear before scripts/tests (the marker)
+    assert content.index("new-skill") < content.index('"scripts/tests"')
+
+
+def test_register_testpaths_idempotent(pipeline_module, tmp_path: Path):
+    """Already registered skill returns False without modifying file."""
+    _make_pyproject(tmp_path, existing_skills=["existing-skill"])
+    test_dir = tmp_path / "skills" / "existing-skill" / "scripts" / "tests"
+    test_dir.mkdir(parents=True)
+    (test_dir / "test_example.py").write_text("def test_ok(): pass\n")
+
+    result = pipeline_module.register_testpaths(tmp_path, "existing-skill")
+
+    assert result is False
+
+
+def test_register_testpaths_no_tests_dir(pipeline_module, tmp_path: Path):
+    """Skill without tests/ directory returns False."""
+    _make_pyproject(tmp_path)
+    # Create skill dir but no tests subdir
+    (tmp_path / "skills" / "no-tests" / "scripts").mkdir(parents=True)
+
+    result = pipeline_module.register_testpaths(tmp_path, "no-tests")
+
+    assert result is False
+
+
+def test_register_testpaths_empty_tests_dir(pipeline_module, tmp_path: Path):
+    """Skill with tests/ dir but no test_*.py files returns False."""
+    _make_pyproject(tmp_path)
+    test_dir = tmp_path / "skills" / "empty-tests" / "scripts" / "tests"
+    test_dir.mkdir(parents=True)
+    # Create non-test files only
+    (test_dir / "conftest.py").write_text("# conftest\n")
+    (test_dir / "helpers.py").write_text("# helpers\n")
+
+    result = pipeline_module.register_testpaths(tmp_path, "empty-tests")
+
+    assert result is False

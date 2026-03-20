@@ -108,6 +108,10 @@ def calculate_leading_stock_health(
         eval_list = list(DEFAULT_LEADING_ETFS)
     total_attempted = len(eval_list)
     fetch_successes = 0
+    partial_data_count = 0
+
+    # Minimum history bars for full analysis (50DMA calculation)
+    MIN_HISTORY_BARS = 50
 
     for symbol in eval_list:
         quote = quotes.get(symbol)
@@ -116,7 +120,12 @@ def calculate_leading_stock_health(
         if not quote:
             continue
 
-        fetch_successes += 1
+        # Full success requires quote + sufficient history
+        if len(hist) >= MIN_HISTORY_BARS:
+            fetch_successes += 1
+        else:
+            partial_data_count += 1
+
         detail = _evaluate_etf(symbol, quote, hist)
         etf_scores.append(detail["deterioration_score"])
         etf_details[symbol] = detail
@@ -132,6 +141,7 @@ def calculate_leading_stock_health(
             "etfs_deteriorating": 0,
             "data_available": False,
             "fetch_success_rate": fetch_success_rate,
+            "partial_data_count": partial_data_count,
             "basket_mode": basket_mode,
             "basket": eval_list,
         }
@@ -174,6 +184,7 @@ def calculate_leading_stock_health(
         "etf_details": etf_details,
         "data_available": data_available,
         "fetch_success_rate": round(fetch_success_rate, 2),
+        "partial_data_count": partial_data_count,
         "basket_mode": basket_mode,
         "basket": eval_list,
     }

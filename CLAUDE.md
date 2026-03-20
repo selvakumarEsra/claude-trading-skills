@@ -114,7 +114,7 @@ Skills are packaged as ZIP files for Claude web app users:
 
 ```bash
 # Use the skill-creator's packaging script
-python3 ~/.claude/plugins/marketplaces/anthropic-agent-skills/skill-creator/scripts/package_skill.py <skill-name>
+python3 ~/.claude/plugins/marketplaces/anthropic-agent-skills/skills/skill-creator/scripts/package_skill.py <skill-name>
 ```
 
 The packaged .skill files are stored in `skill-packages/` and should be regenerated after any skill modifications.
@@ -219,7 +219,7 @@ export ALPACA_PAPER="true"  # or "false" for live trading
 - **Sign up:** https://site.financialmodelingprep.com/developer/docs
 
 **FINVIZ Elite:**
-- **Elite Subscription:** $39.99/month or $329.99/year (~$27.50/month)
+- **Elite Subscription:** $39.50/month or $299.50/year (~$24.96/month)
 - Provides advanced screeners, real-time data, and API access
 - **Sign up:** https://elite.finviz.com/
 - **Note:** FINVIZ Elite is optional for dividend screeners but reduces execution time from 10-15 minutes to 2-3 minutes

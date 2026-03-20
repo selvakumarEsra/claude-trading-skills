@@ -4,7 +4,7 @@ This reference defines market themes by their constituent FINVIZ industries, sec
 
 **Usage Notes:**
 - Industry names must exactly match FINVIZ industry names (see `finviz_industry_codes.md`)
-- `min_matching_industries`: Minimum number of constituent industries that must show activity for the theme to be detected
+- `min_matching_industries`: Design-intent minimum for each theme. In practice, theme detection uses the global `cross_sector_min_matches` setting (default: 2, configurable in themes.yaml) as the threshold. Per-theme values below are informational and not individually enforced in code
 - `static_stocks`: Fallback representative stocks used when industry-level data is insufficient
 - `proxy_etfs`: Used for quick volume/momentum checks and as user-facing exposure recommendations
 

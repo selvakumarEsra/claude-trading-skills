@@ -76,16 +76,28 @@ def _fetch_detail_csv(url: str) -> list:
 
 
 def _check_data_freshness(date_str: str, max_stale_days: int = 5) -> dict:
-    """Check if data date is within acceptable freshness window."""
+    """Check if data date is within acceptable freshness window.
+
+    Uses business days so Friday data remains fresh on Monday.
+    Future dates return is_fresh=False, days_old=None.
+    """
+    from utils import count_business_days
+
     try:
-        data_date = datetime.strptime(date_str, "%Y-%m-%d")
+        data_date = datetime.strptime(date_str, "%Y-%m-%d").date()
     except ValueError:
         return {"is_fresh": False, "days_old": None}
 
-    days_old = (datetime.now() - data_date).days
+    today = datetime.now().date()
+
+    # Reject future dates
+    if data_date > today:
+        return {"is_fresh": False, "days_old": None}
+
+    biz_days = count_business_days(data_date, today)
     return {
-        "is_fresh": days_old <= max_stale_days,
-        "days_old": days_old,
+        "is_fresh": biz_days <= max_stale_days,
+        "days_old": biz_days,
     }
 
 

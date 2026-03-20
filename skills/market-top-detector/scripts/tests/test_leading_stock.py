@@ -143,6 +143,55 @@ class TestSelectDynamicBasket:
         assert result == list(DEFAULT_LEADING_ETFS)
 
 
+class TestPartialDataTracking:
+    """Test partial data detection (quote but insufficient history)."""
+
+    def test_quote_only_not_available(self):
+        """8 ETFs with quotes but no history -> data_available=False, partial=8."""
+        symbols = ["A", "B", "C", "D", "E", "F", "G", "H"]
+        quotes = {s: {"price": 100, "yearHigh": 102, "yearLow": 80} for s in symbols}
+        historical = {}  # No history at all
+        result = calculate_leading_stock_health(quotes, historical, etf_list=symbols)
+        assert result["data_available"] is False
+        assert result["partial_data_count"] == 8
+        assert result["fetch_success_rate"] == 0.0
+
+    def test_mixed_full_and_partial_above_threshold(self):
+        """6 full + 2 partial out of 8 -> data_available=True (75%), partial=2."""
+        symbols = ["A", "B", "C", "D", "E", "F", "G", "H"]
+        quotes = {s: {"price": 100, "yearHigh": 102, "yearLow": 80} for s in symbols}
+        historical = {}
+        for s in symbols[:6]:
+            # Full history (50+ bars)
+            historical[s] = [{"close": 100 - i * 0.1, "volume": 1000000} for i in range(60)]
+        for s in symbols[6:]:
+            # Partial history (< 50 bars)
+            historical[s] = [{"close": 100 - i * 0.1, "volume": 1000000} for i in range(20)]
+        result = calculate_leading_stock_health(quotes, historical, etf_list=symbols)
+        assert result["data_available"] is True  # 6/8 = 0.75
+        assert result["partial_data_count"] == 2
+        assert result["fetch_success_rate"] == 0.75
+
+    def test_mixed_full_and_partial_below_threshold(self):
+        """5 full + 3 partial out of 8 -> data_available=False (62.5%), partial=3."""
+        symbols = ["A", "B", "C", "D", "E", "F", "G", "H"]
+        quotes = {s: {"price": 100, "yearHigh": 102, "yearLow": 80} for s in symbols}
+        historical = {}
+        for s in symbols[:5]:
+            historical[s] = [{"close": 100 - i * 0.1, "volume": 1000000} for i in range(60)]
+        for s in symbols[5:]:
+            historical[s] = [{"close": 100 - i * 0.1, "volume": 1000000} for i in range(20)]
+        result = calculate_leading_stock_health(quotes, historical, etf_list=symbols)
+        assert result["data_available"] is False  # 5/8 = 0.625 < 0.75
+        assert result["partial_data_count"] == 3
+
+    def test_no_data_includes_partial_count(self):
+        """No data case should also include partial_data_count."""
+        result = calculate_leading_stock_health({}, {})
+        assert "partial_data_count" in result
+        assert result["partial_data_count"] == 0
+
+
 class TestBasketModeInResult:
     """Test basket_mode and basket fields in result."""
 

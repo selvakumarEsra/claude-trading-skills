@@ -50,7 +50,7 @@ FinViz Screener bridges the gap between what you want to find and how FinViz exp
 ## 2. Prerequisites
 
 - **API Key:** None required for the public FinViz screener
-- **FINVIZ Elite (Optional):** Auto-detected from `$FINVIZ_API_KEY` for real-time data and enhanced features
+- **FINVIZ Elite (Optional):** Set `$FINVIZ_API_KEY` (any non-empty value) to generate `elite.finviz.com` URLs. The value is not sent to FinViz -- it acts as a local flag for URL switching. You must be logged into an active FINVIZ Elite subscription in your browser
 - **Python 3.9+:** Required to run the URL builder script
 - **No additional Python dependencies** -- uses only the standard library
 
@@ -79,7 +79,7 @@ Claude maps this to filter codes, shows you a confirmation table, and opens the 
 4. **Execute script** -- The `open_finviz_screener.py` script validates filters, builds the URL, and opens Chrome.
 5. **Report results** -- Claude reports the constructed URL, the mode used (Public or Elite), and suggests next steps.
 
-**Elite auto-detection:** If the `$FINVIZ_API_KEY` environment variable is set, the skill automatically uses `elite.finviz.com` instead of the public screener. You can also force Elite mode with `--elite`.
+**Elite auto-detection:** If the `$FINVIZ_API_KEY` environment variable is set (any non-empty value), the script generates `elite.finviz.com` URLs. The variable acts as a local URL-switch flag -- it is not sent to FinViz servers. You can also force Elite mode with `--elite`. To use Elite results, your browser must be logged into an active FINVIZ Elite subscription.
 
 ---
 
@@ -147,6 +147,8 @@ Show me AI and semiconductor stocks with strong momentum
 ```
 
 **Filter codes:** `theme_artificialintelligence,ta_perf_13wup,ta_sma50_pa,ta_sma200_pa`
+
+**Note:** Theme codes are passed via `--themes "artificialintelligence"`, not `--filters`. The `theme_` prefix is added automatically in the URL.
 
 **Why useful:** Uses FinViz's theme filter to target the AI/semiconductor space, overlaid with momentum confirmation. Quickly surfaces the strongest players in a trending theme.
 
@@ -224,7 +226,7 @@ Show me data center and power infrastructure stocks
 **Command:**
 ```bash
 python3 skills/finviz-screener/scripts/open_finviz_screener.py \
-  --subthemes "aboringdatacenters,energypower" \
+  --subthemes "clouddatacenters,aienergy" \
   --url-only
 ```
 
@@ -381,7 +383,7 @@ The FinViz results page itself shows stocks in a sortable table. Use the view se
 |----------|---------------|
 | **Growth stock deep dive** | Use FinViz Screener to build an initial universe, then feed top results into CANSLIM Screener for rigorous 7-component scoring |
 | **Dividend portfolio building** | Screen with FinViz (`fa_div_o3,fa_pe_u20`), then run Value Dividend Screener for sustainability analysis |
-| **Theme-based investing** | Use Theme Detector to identify hot themes, then use FinViz Screener with theme filters (`theme_artificialintelligence`) to find individual stocks |
+| **Theme-based investing** | Use Theme Detector to identify hot themes, then use FinViz Screener with theme filters (`--themes "artificialintelligence"`) to find individual stocks |
 | **Technical confirmation** | After FinViz surfaces candidates, use Technical Analyst for detailed chart reading on the top picks |
 | **Position sizing** | Once you identify entry candidates, pass them to Position Sizer for risk-based share count calculation |
 
@@ -409,9 +411,9 @@ The FinViz results page itself shows stocks in a sortable table. Use the view se
 
 ### Elite mode not activating
 
-**Cause:** `$FINVIZ_API_KEY` environment variable is not set.
+**Cause:** `$FINVIZ_API_KEY` environment variable is not set, or you are not logged into FINVIZ Elite in your browser.
 
-**Fix:** Run `export FINVIZ_API_KEY=your_key_here` in your shell, or pass `--elite` explicitly to force Elite mode.
+**Fix:** Set `export FINVIZ_API_KEY=1` (any non-empty value) to switch to Elite URLs. Then ensure you are logged into your FINVIZ Elite account in Chrome. The env var is a local flag -- it does not authenticate with FinViz.
 
 ---
 
@@ -423,7 +425,7 @@ The FinViz results page itself shows stocks in a sortable table. Use the view se
 |----------|----------|---------|-------------|
 | `--filters` | No* | -- | Comma-separated FinViz filter codes |
 | `--themes` | No* | -- | Comma-separated theme slugs (e.g., `artificialintelligence,cybersecurity`) |
-| `--subthemes` | No* | -- | Comma-separated sub-theme slugs (e.g., `aicloud,energypower`) |
+| `--subthemes` | No* | -- | Comma-separated sub-theme slugs (e.g., `aicloud,aienergy`) |
 | `--elite` | No | Auto-detected | Force Elite mode (`elite.finviz.com`) |
 | `--view` | No | `overview` | View type: overview, valuation, financial, technical, ownership, performance, custom |
 | `--order` | No | None | Sort order code (e.g., `-marketcap`, `dividendyield`). Prefix `-` for descending |
@@ -457,3 +459,5 @@ The FinViz results page itself shows stocks in a sortable table. Use the view se
 | AI theme | `theme_artificialintelligence` |
 | Near 52W high | `ta_highlow52w_b0to5h` |
 | High relative volume | `sh_relvol_o1.5` |
+
+> **Note:** Theme and sub-theme codes use `--themes` / `--subthemes` options, not `--filters`. The script adds the `theme_` / `subtheme_` prefix automatically when building the URL.

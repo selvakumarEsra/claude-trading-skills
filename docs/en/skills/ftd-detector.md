@@ -14,7 +14,7 @@ permalink: /en/skills/ftd-detector/
 Detects Follow-Through Day (FTD) signals for market bottom confirmation using William O'Neil's methodology. Dual-index tracking (S&P 500 + NASDAQ) with state machine for rally attempt, FTD qualification, and post-FTD health monitoring. Use when user asks about market bottom signals, follow-through days, rally attempts, re-entry timing after corrections, or whether it's safe to increase equity exposure. Complementary to market-top-detector (defensive) - this skill is offensive (bottom confirmation).
 {: .fs-6 .fw-300 }
 
-<span class="badge badge-free">No API</span>
+<span class="badge badge-api">FMP Required</span>
 
 [Download Skill Package (.skill)](https://github.com/tradermonty/claude-trading-skills/raw/main/skill-packages/ftd-detector.skill){: .btn .btn-primary .fs-5 .mb-4 .mb-md-0 .mr-2 }
 [View Source on GitHub](https://github.com/tradermonty/claude-trading-skills/tree/main/skills/ftd-detector){: .btn .fs-5 .mb-4 .mb-md-0 }
@@ -30,27 +30,18 @@ Detects Follow-Through Day (FTD) signals for market bottom confirmation using Wi
 
 ## 1. Overview
 
-# FTD Detector Skill
+FTD Detector identifies market bottom signals using William O'Neil's Follow-Through Day methodology. It tracks S&P 500 and NASDAQ/QQQ simultaneously through a state machine that progresses from correction to rally attempt to FTD confirmation, with post-FTD health monitoring including distribution day counting, invalidation detection, and power trend analysis.
 
 ---
 
 ## 2. When to Use
 
-**English:**
 - User asks "Is the market bottoming?" or "Is it safe to buy again?"
 - User observes a market correction (3%+ decline) and wants re-entry timing
 - User asks about Follow-Through Days or rally attempts
 - User wants to assess if a recent bounce is sustainable
 - User asks about increasing equity exposure after a correction
 - Market Top Detector shows elevated risk and user wants bottom signals
-
-**Japanese:**
-- 「底打ちした？」「買い戻して良い？」
-- 調整局面（3%以上の下落）からのエントリータイミング
-- フォロースルーデーやラリーアテンプトについて
-- 直近の反発が持続可能か評価したい
-- 調整後のエクスポージャー拡大の判断
-- Market Top Detectorが高リスク表示の後の底打ちシグナル確認
 
 ---
 
@@ -115,8 +106,6 @@ Based on the market state, provide additional guidance:
 **If No Correction:**
 - FTD analysis is not applicable in uptrend
 - Redirect to Market Top Detector for defensive signals
-
----
 
 ---
 

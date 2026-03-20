@@ -63,14 +63,14 @@ def generate_markdown_report(analysis: dict, output_file: str):
     lines.append(f"| **Composite Score** | **{score}/100** |")
     lines.append(f"| **Risk Zone** | {zone_emoji} {zone} |")
     lines.append(f"| **Risk Budget** | {risk_budget} |")
-    lines.append(
-        f"| **Strongest Warning** | {composite.get('strongest_warning', {}).get('label', 'N/A')} "
-        f"({composite.get('strongest_warning', {}).get('score', 0)}/100) |"
-    )
-    lines.append(
-        f"| **Weakest Warning** | {composite.get('weakest_warning', {}).get('label', 'N/A')} "
-        f"({composite.get('weakest_warning', {}).get('score', 0)}/100) |"
-    )
+    strongest = composite.get("strongest_warning", {})
+    weakest = composite.get("weakest_warning", {})
+    strongest_label = strongest.get("label", "N/A") or "N/A"
+    weakest_label = weakest.get("label", "N/A") or "N/A"
+    strongest_score = strongest.get("score", 0) or 0
+    weakest_score = weakest.get("score", 0) or 0
+    lines.append(f"| **Strongest Warning** | {strongest_label} ({strongest_score}/100) |")
+    lines.append(f"| **Weakest Warning** | {weakest_label} ({weakest_score}/100) |")
     dq = composite.get("data_quality", {})
     if dq:
         lines.append(f"| **Data Quality** | {dq.get('label', 'N/A')} |")
@@ -200,6 +200,11 @@ def generate_markdown_report(analysis: dict, output_file: str):
         lines.append(
             f"- **Amplification Applied:** {'Yes (60%+ deteriorating)' if lead.get('amplified') else 'No'}"
         )
+        partial_count = lead.get("partial_data_count", 0)
+        if partial_count > 0:
+            lines.append(
+                f"- **Note:** {partial_count} ETF(s) had insufficient history for full analysis."
+            )
         etf_details = lead.get("etf_details", {})
         if etf_details:
             lines.append("")

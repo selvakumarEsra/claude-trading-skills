@@ -143,6 +143,9 @@ def compute_data_freshness(date_args: dict) -> dict:
     """
     Compute data freshness factors for CLI input dates.
 
+    Uses business days instead of calendar days so that Friday data
+    remains fresh on Monday. Future dates are treated as anomalous input.
+
     Args:
         date_args: Dict with keys like 'breadth_200dma_date', 'breadth_50dma_date',
                    'put_call_date', 'margin_debt_date' -> YYYY-MM-DD strings.
@@ -151,6 +154,8 @@ def compute_data_freshness(date_args: dict) -> dict:
         Dict with per-input freshness info and overall_confidence (min of all factors).
     """
     from datetime import date as dateclass
+
+    from utils import count_business_days
 
     freshness_map = {
         "breadth_200dma_date": "breadth_200dma",
@@ -169,22 +174,29 @@ def compute_data_freshness(date_args: dict) -> dict:
             continue
         try:
             d = dateclass.fromisoformat(date_str)
-            age_days = (today - d).days
         except (ValueError, TypeError):
             result[label] = {"date": date_str, "age_days": None, "factor": 0.70}
             factors.append(0.70)
             continue
 
-        if age_days <= 1:
+        # Reject future dates as input anomaly
+        if d > today:
+            result[label] = {"date": date_str, "age_days": None, "factor": 0.70}
+            factors.append(0.70)
+            continue
+
+        biz_days = count_business_days(d, today)
+
+        if biz_days <= 1:
             factor = 1.0
-        elif age_days <= 3:
+        elif biz_days <= 3:
             factor = 0.95
-        elif age_days <= 7:
+        elif biz_days <= 7:
             factor = 0.85
         else:
             factor = 0.70
 
-        result[label] = {"date": date_str, "age_days": age_days, "factor": factor}
+        result[label] = {"date": date_str, "age_days": biz_days, "factor": factor}
         factors.append(factor)
 
     result["overall_confidence"] = min(factors) if factors else 1.0

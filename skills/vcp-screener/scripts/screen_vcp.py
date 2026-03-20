@@ -221,7 +221,9 @@ def pre_filter_stock(quote: dict) -> tuple:
 
     # Stage 2 likelihood score (higher = more likely in uptrend)
     # Combines proximity to high and distance from low
-    score = pct_above_low * 50 + (1 - pct_below_high) * 50
+    # Cap pct_above_low at 1.0 to normalize score to 0-100 range
+    capped_above_low = min(pct_above_low, 1.0)
+    score = capped_above_low * 50 + (1 - pct_below_high) * 50
 
     return True, score
 
@@ -387,7 +389,11 @@ def compute_entry_ready(
         return False
     if dry_up_ratio is None or dry_up_ratio > 1.0:
         return False
-    if risk_pct is None or risk_pct > max_risk:
+    # Reject if price is below stop level (risk_pct == 0 means price < stop)
+    trade_status = result.get("pivot_proximity", {}).get("trade_status")
+    if trade_status == "BELOW STOP LEVEL":
+        return False
+    if risk_pct is None or risk_pct <= 0 or risk_pct > max_risk:
         return False
     return True
 
@@ -617,6 +623,7 @@ def main():
     print("Generating Reports")
     print("-" * 70)
 
+    os.makedirs(args.output_dir, exist_ok=True)
     timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
     json_file = os.path.join(args.output_dir, f"vcp_screener_{timestamp}.json")
     md_file = os.path.join(args.output_dir, f"vcp_screener_{timestamp}.md")

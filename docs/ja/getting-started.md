@@ -92,8 +92,8 @@ python3 scripts/screen_canslim.py --api-key YOUR_KEY
 
 | プラン | 料金 | 備考 |
 |--------|------|------|
-| Elite月払い | $39.99/月 | リアルタイムデータ、高速API |
-| Elite年払い | $329.99/年（約$27.50/月） | 年間割引あり |
+| Elite月払い | $39.50/月 | リアルタイムデータ、高速API |
+| Elite年払い | $299.50/年（約$24.96/月） | 年間割引あり |
 
 **登録:** [https://elite.finviz.com/](https://elite.finviz.com/)
 

@@ -1,6 +1,6 @@
 ---
 name: economic-calendar-fetcher
-description: Fetch upcoming economic events and data releases using FMP API. Retrieve scheduled central bank decisions, employment reports, inflation data, GDP releases, and other market-moving economic indicators for specified date ranges (default: next 7 days). Output chronological markdown reports with impact assessment.
+description: "Fetch upcoming economic events and data releases using FMP API. Retrieve scheduled central bank decisions, employment reports, inflation data, GDP releases, and other market-moving economic indicators for specified date ranges (default: next 7 days). The script outputs raw JSON or text; the assistant filters, assesses impact, and generates the Markdown report."
 ---
 
 # Economic Calendar Fetcher
@@ -9,13 +9,13 @@ description: Fetch upcoming economic events and data releases using FMP API. Ret
 
 Retrieve upcoming economic events and data releases from the Financial Modeling Prep (FMP) Economic Calendar API. This skill fetches scheduled economic indicators including central bank monetary policy decisions, employment reports, inflation data (CPI/PPI), GDP releases, retail sales, manufacturing data, and other market-moving events that impact financial markets.
 
-The skill uses a Python script to query the FMP API and generates chronological markdown reports with impact assessment for each scheduled event.
+The skill uses a Python script to query the FMP API and returns raw JSON or text output. The assistant then filters events, assesses market impact, and generates a chronological Markdown report for each scheduled event. No files are generated automatically.
 
 **Key Capabilities:**
 - Fetch economic events for specified date ranges (max 90 days)
-- Support flexible API key provision (environment variable or user input)
-- Filter by impact level, country, or event type
-- Generate structured markdown reports with impact analysis
+- Support flexible API key provision (environment variable or CLI argument)
+- Filter by impact level, country, or event type (filtering performed by the assistant)
+- Present filtered results as structured Markdown reports with impact analysis (assistant-generated, not script-generated)
 - Default to next 7 days for quick market outlook
 
 **Data Source:**
@@ -65,11 +65,12 @@ Follow these steps to fetch and analyze the economic calendar:
 
 ### Step 1: Obtain FMP API Key
 
-**Check for API key availability:**
+**Check for API key availability (in priority order):**
 
-1. First check if FMP_API_KEY environment variable is set
-2. If not available, ask user to provide API key via chat
-3. If user doesn't have API key, provide instructions:
+1. **Recommended:** Check if `FMP_API_KEY` environment variable is set — this keeps the key out of session logs
+2. **Acceptable:** Use `--api-key` CLI argument for one-off runs
+3. **Not recommended:** Asking the user to paste the key into chat — session logs may retain it
+4. If user doesn't have an API key, provide instructions:
    - Visit https://financialmodelingprep.com
    - Sign up for free account (250 requests/day limit)
    - Navigate to API dashboard to obtain key
@@ -77,7 +78,7 @@ Follow these steps to fetch and analyze the economic calendar:
 **Example user interaction:**
 ```
 User: "Show me economic events for next week"
-Assistant: "I'll fetch the economic calendar. Do you have an FMP API key? I can use the FMP_API_KEY environment variable, or you can provide your API key now."
+Assistant: "I'll fetch the economic calendar. I'll use the FMP_API_KEY environment variable if it's set. Otherwise, please pass the key via --api-key when running the script."
 ```
 
 ### Step 2: Determine Date Range
@@ -135,7 +136,7 @@ python3 skills/economic-calendar-fetcher/scripts/get_economic_calendar.py \
 **Handle errors:**
 - Invalid API key → Ask user to verify key
 - Rate limit exceeded (429) → Suggest waiting or upgrading FMP tier
-- Network errors → Retry with exponential backoff
+- Network errors → Check your connection and re-run the script
 - Invalid date format → Provide correct format example
 
 ### Step 4: Parse and Filter Events
@@ -212,6 +213,8 @@ python3 skills/economic-calendar-fetcher/scripts/get_economic_calendar.py \
    - Will this data be revised?
 
 ### Step 6: Generate Output Report
+
+> **Responsibility:** The script outputs raw JSON or text. This step is performed by the assistant using the script's output. No Markdown files are generated automatically; results are displayed in chat and can be saved to `reports/` on request.
 
 **Create structured markdown report with the following sections:**
 
@@ -298,25 +301,18 @@ If user requested specific filters, note at top:
 - Events shown: [X] of [Y] total events in date range
 ```
 
-**Output Format:**
-- Primary: Markdown file saved to disk
-- Filename format: `economic_calendar_[START]_to_[END].md`
-- Also display summary to user in chat
+**Output:**
+- Results are displayed in chat. No files are generated automatically.
+- To save **raw JSON/text data**: use `--output reports/economic_calendar_[START]_to_[END].json` when running the script.
+- To save the **Markdown report**: ask the assistant to write it to `reports/` after generating it in chat.
 
-## Output Format Specifications
-
-**File naming convention:**
-```
-economic_calendar_2025-01-01_to_2025-01-31.md
-economic_calendar_2025-01-15_to_2025-01-21.md  (weekly)
-economic_calendar_high_impact_2025-01.md  (with filters)
-```
+## Assistant-Generated Report Format
 
 **Markdown structure requirements:**
 
 1. **Chronological ordering:** Events sorted by date and time (earliest first)
 2. **Impact level indicators:** Use (High Impact), (Medium Impact), (Low Impact) labels
-3. **Time zone clarity:** Always specify UTC and provide ET/PT conversions for US events
+3. **Time zone clarity:** Always specify UTC; ET/PT conversions are performed by the assistant based on US DST calendar
 4. **Data completeness:** Include all available fields (previous, estimate, actual if past)
 5. **Null handling:** Display "N/A" or "No estimate" for null values
 6. **Impact assessment:** Every high/medium impact event must have market implications analysis
@@ -366,6 +362,6 @@ economic_calendar_high_impact_2025-01.md  (with filters)
 
 **Error Handling:**
 - API key errors: Clear user guidance for obtaining free key
-- Rate limits: Exponential backoff retry logic
-- Network failures: Graceful degradation with cached data if available
+- Rate limits (429): Suggest waiting or upgrading FMP tier; re-run the script after the wait
+- Network failures: Check connection and re-run; no automatic retry or cache in the script
 - Invalid dates: Validation with helpful error messages

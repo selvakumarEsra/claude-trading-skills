@@ -18,7 +18,7 @@
 | {{rank}} | {{name}} | {{direction_emoji}} {{direction}} | {{heat}}/100 | {{lifecycle}} | {{confidence}} |
 {{/each}}
 
-**Legend:** Direction: UP = Bullish, DOWN = Bearish | Heat: 0-100 scale | Lifecycle: Early/Mid/Late/Exhaustion
+**Legend:** Direction: LEAD/LAG (Dashboard), ^/v (Summary) | Heat: 0-100 scale | Lifecycle: Emerging/Accelerating/Trending/Mature/Exhausting
 
 ---
 

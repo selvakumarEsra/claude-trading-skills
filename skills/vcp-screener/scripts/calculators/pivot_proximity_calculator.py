@@ -123,10 +123,10 @@ def calculate_pivot_proximity(
         if current_price > stop_loss_price:
             risk_pct = round((current_price - stop_loss_price) / current_price * 100, 2)
         else:
-            # Price already below stop level
-            risk_pct = 0
+            # Price already below stop level — setup is invalidated
+            risk_pct = None
             trade_status = "BELOW STOP LEVEL"
-            score = max(0, score - 20)
+            score = 0
 
     return {
         "score": score,

@@ -77,3 +77,24 @@ class TestFetchBreadth200dma:
         mock_get.return_value = _mock_response(header_only)
         result = fetch_breadth_200dma()
         assert result is None
+
+
+class TestCheckDataFreshness:
+    """Test _check_data_freshness function."""
+
+    def test_future_date_returns_not_fresh(self):
+        """Future date should return is_fresh=False, days_old=None."""
+        from breadth_csv_client import _check_data_freshness
+
+        # Use a date far in the future
+        result = _check_data_freshness("2099-12-31")
+        assert result["is_fresh"] is False
+        assert result["days_old"] is None
+
+    def test_invalid_date_returns_not_fresh(self):
+        """Invalid date string should return is_fresh=False, days_old=None."""
+        from breadth_csv_client import _check_data_freshness
+
+        result = _check_data_freshness("not-a-date")
+        assert result["is_fresh"] is False
+        assert result["days_old"] is None

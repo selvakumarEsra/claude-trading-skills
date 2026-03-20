@@ -660,3 +660,48 @@ class TestOriginInDashboard:
         report = generate_json_report(themes, {"top": [], "bottom": []}, {}, metadata)
         md = generate_markdown_report(report)
         assert "**Origin:**" not in md
+
+
+# --- Tests for data quality badges ---
+
+
+class TestDataQualityBadges:
+    """Verify lifecycle insufficient and discovered-provisional badges."""
+
+    def _make_theme(self, **overrides):
+        base = {
+            "name": "Test Theme",
+            "direction": "bullish",
+            "heat": 65.0,
+            "maturity": 35.0,
+            "stage": "early",
+            "confidence": "Low",
+            "industries": ["Tech"],
+            "heat_breakdown": {},
+            "maturity_breakdown": {},
+            "representative_stocks": ["AAPL"],
+            "proxy_etfs": [],
+        }
+        base.update(overrides)
+        return base
+
+    def _render(self, theme):
+        metadata = {"generated_at": "2026-03-17", "data_sources": {}}
+        report = generate_json_report([theme], {"top": [], "bottom": []}, {}, metadata)
+        return generate_markdown_report(report)
+
+    def test_lifecycle_insufficient_badge(self):
+        md = self._render(self._make_theme(lifecycle_data_quality="insufficient"))
+        assert "[Lifecycle data insufficient]" in md
+
+    def test_lifecycle_sufficient_no_badge(self):
+        md = self._render(self._make_theme(lifecycle_data_quality="sufficient"))
+        assert "[Lifecycle data insufficient]" not in md
+
+    def test_discovered_provisional_badge(self):
+        md = self._render(self._make_theme(theme_origin="discovered"))
+        assert "[Discovered - provisional]" in md
+
+    def test_seed_no_provisional_badge(self):
+        md = self._render(self._make_theme(theme_origin="seed"))
+        assert "[Discovered - provisional]" not in md
