@@ -6,7 +6,8 @@ Analyzes volume behavior near the pivot point of a VCP pattern.
 Key principle: Volume should contract (dry up) as the pattern tightens,
 then expand on breakout.
 
-Key Metric: Volume dry-up ratio = avg volume (last 10 bars near pivot) / 50-day avg volume
+Key Metric: Volume dry-up ratio = avg volume (10 bars before pivot, bar[0] excluded)
+            / 50-day avg volume
 
 Scoring:
 - Dry-up ratio < 0.30:  90 (exceptional volume contraction)
@@ -19,6 +20,11 @@ Modifiers:
 - Breakout on 1.5x+ volume: +10
 - Net accumulation > 3 days: +10
 - Net distribution > 3 days: -10
+- Declining contraction volume: +10
+
+Note: Bar[0] (potential breakout bar) is excluded from dry-up calculation
+to avoid contaminating the dry-up ratio with high breakout volume.
+The breakout quality is tracked separately via breakout_volume_score.
 """
 
 from typing import Optional
@@ -79,12 +85,15 @@ def calculate_volume_pattern(
             volumes, closes, contractions, pivot_price, avg_volume_50d
         )
 
-    # Dry-up ratio: use Zone B if available, otherwise legacy 10-bar window
+    # Dry-up ratio: use Zone B if available, otherwise legacy window.
+    # Bar[0] (potential breakout bar) is excluded from both paths to avoid
+    # contaminating dry-up with high breakout volume.
     if use_zone and zone_analysis and zone_analysis.get("zone_b_avg_volume"):
         avg_volume_recent = zone_analysis["zone_b_avg_volume"]
     else:
-        recent_period = min(10, len(volumes))
-        avg_volume_recent = sum(volumes[:recent_period]) / recent_period if recent_period > 0 else 0
+        # volumes[1:11] — 10 bars, skip bar[0]
+        legacy_vols = volumes[1:11] if len(volumes) > 1 else []
+        avg_volume_recent = sum(legacy_vols) / len(legacy_vols) if legacy_vols else 0
 
     dry_up_ratio = avg_volume_recent / avg_volume_50d if avg_volume_50d > 0 else 1.0
 
@@ -102,13 +111,27 @@ def calculate_volume_pattern(
 
     score = base_score
 
-    # Modifier: Check for breakout volume (most recent day)
+    # Modifier: Breakout volume confirmation (bar[0])
+    # Tracked independently from dry-up — high breakout volume on a clean
+    # bar[0] above pivot is a positive signal, not a contaminator of dry-up.
     breakout_volume = False
-    if len(volumes) >= 2 and volumes[0] > avg_volume_50d * breakout_volume_ratio:
-        current_price = closes[0] if closes else 0
+    breakout_volume_score = 0
+    current_price = closes[0] if closes else 0
+    if len(volumes) >= 1 and avg_volume_50d > 0:
+        bar0_ratio = volumes[0] / avg_volume_50d
         if pivot_price and current_price > pivot_price:
-            breakout_volume = True
-            score += 10
+            if bar0_ratio >= breakout_volume_ratio:
+                breakout_volume = True
+                score += 10
+            # Independent breakout volume score regardless of pivot position
+            if bar0_ratio >= 3.0:
+                breakout_volume_score = 100
+            elif bar0_ratio >= 2.0:
+                breakout_volume_score = 80
+            elif bar0_ratio >= breakout_volume_ratio:
+                breakout_volume_score = 60
+            elif bar0_ratio >= 1.0:
+                breakout_volume_score = 30
 
     # Modifier: Net accumulation/distribution in last 20 days
     # Only count days where volume exceeds 50-day average (institutional activity)
@@ -129,9 +152,9 @@ def calculate_volume_pattern(
     elif net_accumulation < -3:
         score -= 10
 
-    # Zone bonus: declining contraction volume
+    # Zone bonus: declining contraction volume (strengthened +5 → +10)
     if contraction_volume_trend and contraction_volume_trend.get("declining"):
-        score += 5
+        score += 10
 
     score = max(0, min(100, score))
 
@@ -141,6 +164,7 @@ def calculate_volume_pattern(
         "avg_volume_50d": int(avg_volume_50d),
         "avg_volume_recent_10d": int(avg_volume_recent),
         "breakout_volume_detected": breakout_volume,
+        "breakout_volume_score": breakout_volume_score,
         "up_volume_days_20d": up_vol_days,
         "down_volume_days_20d": down_vol_days,
         "net_accumulation": net_accumulation,
@@ -182,9 +206,10 @@ def _zone_volume_analysis(
     zone_a_vols = volumes[max(0, zone_a_start) : min(n, zone_a_end + 1)]
     zone_a_avg = int(sum(zone_a_vols) / len(zone_a_vols)) if zone_a_vols else 0
 
-    # Zone B: Pivot approach (most recent 5-10 bars before current)
+    # Zone B: Pivot approach (10 bars before current, bar[0] excluded)
+    # volumes[1:11] = bars 1..10 (10 bars) — breakout bar excluded
     zone_b_start = 1  # skip bar 0 (potential breakout)
-    zone_b_end = min(10, n)
+    zone_b_end = min(11, n)
     zone_b_vols = volumes[zone_b_start:zone_b_end]
     zone_b_avg = int(sum(zone_b_vols) / len(zone_b_vols)) if zone_b_vols else 0
 

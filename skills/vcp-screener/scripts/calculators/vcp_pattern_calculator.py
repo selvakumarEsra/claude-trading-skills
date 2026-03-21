@@ -28,6 +28,7 @@ def calculate_vcp_pattern(
     min_contractions: int = 2,
     t1_depth_min: float = 8.0,
     contraction_ratio: float = 0.75,
+    wide_and_loose_threshold: float = 15.0,
 ) -> dict:
     """
     Detect Volatility Contraction Pattern in price data.
@@ -41,9 +42,12 @@ def calculate_vcp_pattern(
         atr_multiplier: ATR multiplier for ZigZag swing threshold
         atr_period: ATR calculation period
         min_contraction_days: Minimum days for a contraction to count
+        wide_and_loose_threshold: Final contraction depth % above which (combined
+            with <10-day duration) flags a wide-and-loose pattern (default 15.0)
 
     Returns:
-        Dict with score (0-100), contractions list, pattern validity, pivot point
+        Dict with score (0-100), contractions list, pattern validity, pivot point,
+        atr_compression_ratio, wide_and_loose, right_side_range_ratio
     """
     empty_result = {
         "score": 0,
@@ -51,6 +55,9 @@ def calculate_vcp_pattern(
         "contractions": [],
         "num_contractions": 0,
         "pivot_price": None,
+        "atr_compression_ratio": None,
+        "wide_and_loose": False,
+        "right_side_range_ratio": None,
         "error": None,
     }
 
@@ -74,6 +81,8 @@ def calculate_vcp_pattern(
 
     # Step A: Find swing points using ZigZag (primary) with fixed-window fallback
     atr_val = _calculate_atr(highs, lows, closes, atr_period)
+    atr_10 = _calculate_atr(highs, lows, closes, 10)
+    atr_50 = _calculate_atr(highs, lows, closes, 50)
     zz_highs, zz_lows = _zigzag_swing_points(highs, lows, closes, dates, atr_multiplier, atr_period)
 
     # Use ZigZag results if they have enough points, otherwise fallback
@@ -122,6 +131,7 @@ def calculate_vcp_pattern(
     contractions = best_contractions
 
     if len(contractions) < min_contractions:
+        atr_compression_ratio = (atr_10 / atr_50) if (atr_50 > 0 and atr_10 > 0) else None
         return {
             "score": 0,
             "valid_vcp": False,
@@ -129,6 +139,11 @@ def calculate_vcp_pattern(
             "num_contractions": len(contractions),
             "pivot_price": _get_pivot_price(contractions, highs, swing_highs),
             "atr_value": round(atr_val, 4) if atr_val else None,
+            "atr_compression_ratio": round(atr_compression_ratio, 3)
+            if atr_compression_ratio is not None
+            else None,
+            "wide_and_loose": False,
+            "right_side_range_ratio": None,
             "error": f"Fewer than {min_contractions} contractions found",
         }
 
@@ -146,6 +161,21 @@ def calculate_vcp_pattern(
     # Score the pattern
     score = _score_vcp(contractions, validation)
 
+    # ATR compression ratio: recent ATR(10) / ATR(50) — lower = more compressed
+    atr_compression_ratio: Optional[float] = None
+    if atr_10 > 0 and atr_50 > 0:
+        atr_compression_ratio = atr_10 / atr_50
+
+    # Wide-and-loose flag: final contraction is deep AND very short
+    wide_and_loose = _compute_wide_and_loose(contractions, wide_and_loose_threshold)
+
+    # Right-side tightness: 15-bar price range / ATR(50)
+    # Measures how compact the right side of the base is (lower = tighter)
+    right_side_range_ratio: Optional[float] = None
+    if atr_50 > 0 and n >= 15:
+        recent_range = max(highs[-15:]) - min(lows[-15:])
+        right_side_range_ratio = recent_range / atr_50
+
     return {
         "score": score,
         "valid_vcp": validation["valid"],
@@ -155,6 +185,13 @@ def calculate_vcp_pattern(
         "pattern_duration_days": pattern_duration,
         "validation": validation,
         "atr_value": round(atr_val, 4) if atr_val else None,
+        "atr_compression_ratio": round(atr_compression_ratio, 3)
+        if atr_compression_ratio is not None
+        else None,
+        "wide_and_loose": wide_and_loose,
+        "right_side_range_ratio": round(right_side_range_ratio, 3)
+        if right_side_range_ratio is not None
+        else None,
         "error": None,
     }
 
@@ -542,6 +579,28 @@ def _validate_vcp(
         "contraction_ratios": [round(r, 3) for r in contraction_ratios],
         "t1_depth": t1_depth,
     }
+
+
+def _compute_wide_and_loose(contractions: list[dict], threshold: float) -> bool:
+    """Return True if the final contraction is wide-and-loose.
+
+    Wide-and-loose: depth > threshold AND duration < 10 days.
+    This flags patterns where the final consolidation is too deep and
+    too brief to be a quality VCP setup.
+
+    Args:
+        contractions: List of contraction dicts (must have depth_pct, duration_days)
+        threshold: Maximum acceptable depth % (final contraction)
+
+    Returns:
+        True if final contraction qualifies as wide-and-loose
+    """
+    if not contractions:
+        return False
+    final = contractions[-1]
+    final_depth = final.get("depth_pct", 0.0)
+    final_duration = final.get("duration_days", 999)
+    return final_depth > threshold and final_duration < 10
 
 
 def _get_pivot_price(

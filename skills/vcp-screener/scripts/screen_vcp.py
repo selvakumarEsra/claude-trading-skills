@@ -29,6 +29,8 @@ from typing import Optional
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(__file__))
 
+from calculators.execution_state import compute_execution_state
+from calculators.pattern_classifier import classify_pattern
 from calculators.pivot_proximity_calculator import calculate_pivot_proximity
 from calculators.relative_strength_calculator import (
     calculate_relative_strength,
@@ -109,8 +111,8 @@ def parse_arguments():
     parser.add_argument(
         "--t1-depth-min",
         type=float,
-        default=8.0,
-        help="Minimum T1 depth %% (default: 8.0)",
+        default=10.0,
+        help="Minimum T1 depth %% (default: 10.0)",
     )
     parser.add_argument(
         "--breakout-volume-ratio",
@@ -133,8 +135,8 @@ def parse_arguments():
     parser.add_argument(
         "--contraction-ratio",
         type=float,
-        default=0.75,
-        help="Max ratio for successive contractions (default: 0.75)",
+        default=0.70,
+        help="Max ratio for successive contractions (default: 0.70)",
     )
     parser.add_argument(
         "--min-contraction-days",
@@ -147,6 +149,26 @@ def parse_arguments():
         type=int,
         default=120,
         help="VCP pattern lookback window in days (default: 120)",
+    )
+    parser.add_argument(
+        "--max-sma200-extension",
+        type=float,
+        default=50.0,
+        help="Max %% above SMA200 before Overextended state (default: 50.0)",
+    )
+    parser.add_argument(
+        "--wide-and-loose-threshold",
+        type=float,
+        default=15.0,
+        help="Final contraction depth %% above which (with <10d duration) flags wide-and-loose (default: 15.0)",
+    )
+    parser.add_argument(
+        "--strict",
+        action="store_true",
+        help=(
+            "Minervini strict mode: only include stocks with valid_vcp=True AND "
+            "execution_state in ('Pre-breakout', 'Breakout')"
+        ),
     )
 
     args = parser.parse_args()
@@ -237,12 +259,14 @@ def analyze_stock(
     company_name: str = "",
     ext_threshold: float = 8.0,
     min_contractions: int = 2,
-    t1_depth_min: float = 8.0,
-    contraction_ratio: float = 0.75,
+    t1_depth_min: float = 10.0,
+    contraction_ratio: float = 0.70,
     atr_multiplier: float = 1.5,
     min_contraction_days: int = 5,
     lookback_days: int = 120,
     breakout_volume_ratio: float = 1.5,
+    max_sma200_extension: float = 50.0,
+    wide_and_loose_threshold: float = 15.0,
 ) -> Optional[dict]:
     """
     Full VCP analysis for a single stock (Phase 3).
@@ -257,7 +281,11 @@ def analyze_stock(
 
     # 2. Trend Template
     tt_result = calculate_trend_template(
-        historical, quote, rs_rank=rs_rank, ext_threshold=ext_threshold
+        historical,
+        quote,
+        rs_rank=rs_rank,
+        ext_threshold=ext_threshold,
+        max_sma200_extension=max_sma200_extension,
     )
 
     # 3. VCP Pattern Detection
@@ -269,6 +297,7 @@ def analyze_stock(
         min_contractions=min_contractions,
         t1_depth_min=t1_depth_min,
         contraction_ratio=contraction_ratio,
+        wide_and_loose_threshold=wide_and_loose_threshold,
     )
 
     # 4. Volume Pattern
@@ -293,8 +322,39 @@ def analyze_stock(
         breakout_volume=vol_result.get("breakout_volume_detected", False),
     )
 
-    # 6. Composite Score
+    # 6. Execution State — separates "strong pattern" from "buyable now"
+    sma200_tt = tt_result.get("sma200")
+    sma200_distance_pct: Optional[float] = None
+    if sma200_tt and sma200_tt > 0:
+        sma200_distance_pct = (price - sma200_tt) / sma200_tt * 100
+
+    exec_state_result = compute_execution_state(
+        distance_from_pivot_pct=piv_result.get("distance_from_pivot_pct"),
+        price=price,
+        sma50=tt_result.get("sma50"),
+        sma200=sma200_tt,
+        sma200_distance_pct=sma200_distance_pct,
+        last_contraction_low=last_low,
+        breakout_volume=vol_result.get("breakout_volume_detected", False),
+        max_sma200_extension=max_sma200_extension,
+    )
+    execution_state = exec_state_result["state"]
+
+    # 7. Pattern Classifier
     valid_vcp = vcp_result.get("valid_vcp", False)
+    wide_and_loose = vcp_result.get("wide_and_loose", False)
+    final_depth = contractions[-1].get("depth_pct") if contractions else None
+
+    pattern_type = classify_pattern(
+        valid_vcp=valid_vcp,
+        num_contractions=vcp_result.get("num_contractions", 0),
+        final_contraction_depth=final_depth,
+        execution_state=execution_state,
+        dry_up_ratio=vol_result.get("dry_up_ratio"),
+        wide_and_loose=wide_and_loose,
+    )
+
+    # 8. Composite Score (with State Caps)
     composite = calculate_composite_score(
         trend_score=tt_result.get("score", 0),
         contraction_score=vcp_result.get("score", 0),
@@ -302,6 +362,10 @@ def analyze_stock(
         pivot_score=piv_result.get("score", 0),
         rs_score=rs_result.get("score", 0),
         valid_vcp=valid_vcp,
+        execution_state=execution_state,
+        pattern_type=pattern_type,
+        wide_and_loose=wide_and_loose,
+        sma200_extension_pct=sma200_distance_pct,
     )
 
     return {
@@ -315,6 +379,14 @@ def analyze_stock(
         "rating_description": composite["rating_description"],
         "guidance": composite["guidance"],
         "valid_vcp": valid_vcp,
+        "execution_state": execution_state,
+        "execution_state_reasons": exec_state_result.get("reasons", []),
+        "pattern_type": pattern_type,
+        "state_cap_applied": composite.get("state_cap_applied", False),
+        "cap_reason": composite.get("cap_reason"),
+        "sma200_distance_pct": round(sma200_distance_pct, 1)
+        if sma200_distance_pct is not None
+        else None,
         "distance_from_pivot_pct": piv_result.get("distance_from_pivot_pct"),
         "weakest_component": composite["weakest_component"],
         "weakest_score": composite["weakest_score"],
@@ -376,6 +448,11 @@ def compute_entry_ready(
         max_risk: Max risk % for entry readiness
         require_valid_vcp: Whether valid_vcp=True is required
     """
+    # State-based immediate rejection
+    state = result.get("execution_state")
+    if state in ("Invalid", "Damaged", "Overextended", "Extended"):
+        return False
+
     valid_vcp = result.get("valid_vcp", False)
     distance = result.get("distance_from_pivot_pct")
     dry_up_ratio = result.get("volume_pattern", {}).get("dry_up_ratio")
@@ -562,6 +639,8 @@ def main():
             min_contraction_days=args.min_contraction_days,
             lookback_days=args.lookback_days,
             breakout_volume_ratio=args.breakout_volume_ratio,
+            max_sma200_extension=args.max_sma200_extension,
+            wide_and_loose_threshold=args.wide_and_loose_threshold,
         )
 
         if analysis:
@@ -579,7 +658,7 @@ def main():
         ranked_rs = rank_relative_strength_universe(rs_map)
         for r in results:
             r["relative_strength"] = ranked_rs[r["symbol"]]
-            # Recalculate composite score with updated RS
+            # Recalculate composite score with updated RS (preserving state caps)
             composite = calculate_composite_score(
                 trend_score=r["trend_template"].get("score", 0),
                 contraction_score=r["vcp_pattern"].get("score", 0),
@@ -587,6 +666,10 @@ def main():
                 pivot_score=r["pivot_proximity"].get("score", 0),
                 rs_score=r["relative_strength"].get("score", 0),
                 valid_vcp=r.get("valid_vcp", False),
+                execution_state=r.get("execution_state"),
+                pattern_type=r.get("pattern_type"),
+                wide_and_loose=r.get("wide_and_loose", False),
+                sma200_extension_pct=r.get("sma200_extension_pct"),
             )
             r["composite_score"] = composite["composite_score"]
             r["rating"] = composite["rating"]
@@ -596,6 +679,8 @@ def main():
             r["weakest_score"] = composite["weakest_score"]
             r["strongest_component"] = composite["strongest_component"]
             r["strongest_score"] = composite["strongest_score"]
+            r["state_cap_applied"] = composite.get("state_cap_applied", False)
+            r["cap_reason"] = composite.get("cap_reason")
 
     # Compute entry_ready using CLI thresholds
     require_vcp = not args.no_require_valid_vcp
@@ -615,6 +700,18 @@ def main():
         total_before = len(results)
         results = [r for r in results if r.get("entry_ready", False)]
         print(f"  Pre-breakout filter: {total_before} -> {len(results)} candidates")
+        print()
+
+    # Apply strict mode filter if requested
+    if args.strict:
+        total_before = len(results)
+        results = [
+            r
+            for r in results
+            if r.get("valid_vcp", False)
+            and r.get("execution_state") in ("Pre-breakout", "Breakout")
+        ]
+        print(f"  Strict mode filter: {total_before} -> {len(results)} candidates")
         print()
 
     # ========================================================================
@@ -644,6 +741,9 @@ def main():
             "contraction_ratio": args.contraction_ratio,
             "min_contraction_days": args.min_contraction_days,
             "lookback_days": args.lookback_days,
+            "max_sma200_extension": args.max_sma200_extension,
+            "wide_and_loose_threshold": args.wide_and_loose_threshold,
+            "strict": args.strict,
         },
         "funnel": {
             "universe": len(symbols),

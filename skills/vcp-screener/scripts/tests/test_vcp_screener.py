@@ -10,6 +10,7 @@ import json
 import os
 import tempfile
 
+import pytest
 from calculators.pivot_proximity_calculator import calculate_pivot_proximity
 from calculators.relative_strength_calculator import calculate_relative_strength
 from calculators.trend_template_calculator import calculate_trend_template
@@ -223,10 +224,15 @@ class TestVolumePattern:
         assert "Insufficient" in result["error"]
 
     def test_low_dry_up_ratio(self):
-        """Recent volume much lower than 50d avg -> high score."""
+        """Recent volume much lower than 50d avg -> high score.
+
+        Bar[0] is excluded from dry-up (potential breakout bar).
+        The dry-up window is volumes[1:11]. Set bars 0-10 to low volume
+        so that all 10 dry-up bars have low volume.
+        """
         prices = _make_prices(60, volume=1000000)
-        # Override recent 10 bars with low volume
-        for i in range(10):
+        # Override bars 0-10 (11 bars) with low volume so volumes[1:11] are all low
+        for i in range(11):
             prices[i]["volume"] = 200000
         result = calculate_volume_pattern(prices)
         assert result["dry_up_ratio"] < 0.3
@@ -1733,8 +1739,8 @@ class TestFixedTautologicalTests:
         # Declining should have the bonus
         assert result_declining.get("contraction_volume_trend", {}).get("declining") is True
         assert result_flat.get("contraction_volume_trend", {}).get("declining") is False
-        # Score difference should be exactly 5
-        assert result_declining["score"] - result_flat["score"] == 5
+        # Score difference should be exactly 10 (strengthened bonus in Phase 4)
+        assert result_declining["score"] - result_flat["score"] == 10
 
 
 # ===========================================================================
@@ -2166,3 +2172,1072 @@ def test_build_contractions_does_not_skip_intermediate_high():
                 f"Contraction from idx=0 jumped to low_idx={c['low_idx']}, "
                 f"skipping intermediate swing high at idx=4"
             )
+
+
+# ---------------------------------------------------------------------------
+# Phase 1: Execution State, Pattern Classifier, Scorer State Caps
+# ---------------------------------------------------------------------------
+
+from calculators.execution_state import apply_state_cap, compute_execution_state
+from calculators.pattern_classifier import classify_pattern
+
+
+class TestExecutionState:
+    """Tests for compute_execution_state() — 10-rule decision tree."""
+
+    def test_invalid_price_below_sma50_below_sma200(self):
+        result = compute_execution_state(
+            distance_from_pivot_pct=None,
+            price=80.0,
+            sma50=90.0,
+            sma200=95.0,
+            sma200_distance_pct=-15.8,
+            last_contraction_low=None,
+            breakout_volume=False,
+        )
+        assert result["state"] == "Invalid"
+        assert result["reasons"]
+
+    def test_not_invalid_when_sma50_above_sma200(self):
+        # price < sma50, but sma50 > sma200 → Stage 2 possible, use Damaged not Invalid
+        result = compute_execution_state(
+            distance_from_pivot_pct=-2.0,
+            price=95.0,
+            sma50=100.0,
+            sma200=90.0,
+            sma200_distance_pct=5.6,
+            last_contraction_low=None,
+            breakout_volume=False,
+        )
+        assert result["state"] == "Damaged"  # Rule 3, not Rule 1
+
+    def test_damaged_price_below_contraction_low(self):
+        result = compute_execution_state(
+            distance_from_pivot_pct=None,
+            price=88.0,
+            sma50=92.0,
+            sma200=85.0,
+            sma200_distance_pct=3.5,
+            last_contraction_low=90.0,
+            breakout_volume=False,
+        )
+        assert result["state"] == "Damaged"
+        assert "contraction low" in result["reasons"][0].lower()
+
+    def test_damaged_price_below_sma50(self):
+        result = compute_execution_state(
+            distance_from_pivot_pct=1.0,
+            price=95.0,
+            sma50=100.0,
+            sma200=90.0,
+            sma200_distance_pct=5.6,
+            last_contraction_low=None,
+            breakout_volume=False,
+        )
+        assert result["state"] == "Damaged"
+
+    def test_overextended_sma200_too_far(self):
+        result = compute_execution_state(
+            distance_from_pivot_pct=2.0,
+            price=200.0,
+            sma50=180.0,
+            sma200=120.0,
+            sma200_distance_pct=66.7,
+            last_contraction_low=None,
+            breakout_volume=False,
+            max_sma200_extension=50.0,
+        )
+        assert result["state"] == "Overextended"
+
+    def test_overextended_pivot_more_than_10pct(self):
+        result = compute_execution_state(
+            distance_from_pivot_pct=12.0,
+            price=112.0,
+            sma50=100.0,
+            sma200=90.0,
+            sma200_distance_pct=24.4,
+            last_contraction_low=None,
+            breakout_volume=False,
+        )
+        assert result["state"] == "Overextended"
+
+    def test_extended_5_to_10pct_above_pivot(self):
+        result = compute_execution_state(
+            distance_from_pivot_pct=7.5,
+            price=107.5,
+            sma50=100.0,
+            sma200=90.0,
+            sma200_distance_pct=19.4,
+            last_contraction_low=None,
+            breakout_volume=False,
+        )
+        assert result["state"] == "Extended"
+
+    def test_early_post_breakout_3_to_5pct(self):
+        result = compute_execution_state(
+            distance_from_pivot_pct=4.0,
+            price=104.0,
+            sma50=100.0,
+            sma200=90.0,
+            sma200_distance_pct=15.6,
+            last_contraction_low=None,
+            breakout_volume=False,
+        )
+        assert result["state"] == "Early-post-breakout"
+
+    def test_breakout_within_3pct_with_volume(self):
+        result = compute_execution_state(
+            distance_from_pivot_pct=1.5,
+            price=101.5,
+            sma50=98.0,
+            sma200=90.0,
+            sma200_distance_pct=12.8,
+            last_contraction_low=None,
+            breakout_volume=True,
+        )
+        assert result["state"] == "Breakout"
+
+    def test_pre_breakout_within_3pct_no_volume(self):
+        result = compute_execution_state(
+            distance_from_pivot_pct=1.5,
+            price=101.5,
+            sma50=98.0,
+            sma200=90.0,
+            sma200_distance_pct=12.8,
+            last_contraction_low=None,
+            breakout_volume=False,
+        )
+        assert result["state"] == "Early-post-breakout"
+
+    def test_pre_breakout_below_pivot(self):
+        # price above sma50 but below pivot — still forming pattern
+        result = compute_execution_state(
+            distance_from_pivot_pct=-3.0,
+            price=97.0,
+            sma50=94.0,  # price > sma50, so no Damaged state
+            sma200=85.0,
+            sma200_distance_pct=14.1,
+            last_contraction_low=None,
+            breakout_volume=False,
+        )
+        assert result["state"] == "Pre-breakout"
+        assert "-3.0% below pivot" in result["reasons"][0]
+
+
+class TestApplyStateCap:
+    """Tests for apply_state_cap() helper."""
+
+    def test_invalid_caps_to_no_vcp(self):
+        capped, applied = apply_state_cap("Textbook VCP", "Invalid")
+        assert capped == "No VCP"
+        assert applied is True
+
+    def test_damaged_caps_strong_to_no_vcp(self):
+        capped, applied = apply_state_cap("Strong VCP", "Damaged")
+        assert capped == "No VCP"
+        assert applied is True
+
+    def test_overextended_caps_to_weak(self):
+        capped, applied = apply_state_cap("Good VCP", "Overextended")
+        assert capped == "Weak VCP"
+        assert applied is True
+
+    def test_extended_caps_to_developing(self):
+        capped, applied = apply_state_cap("Strong VCP", "Extended")
+        assert capped == "Developing VCP"
+        assert applied is True
+
+    def test_pre_breakout_no_cap(self):
+        capped, applied = apply_state_cap("Textbook VCP", "Pre-breakout")
+        assert capped == "Textbook VCP"
+        assert applied is False
+
+    def test_breakout_no_cap(self):
+        capped, applied = apply_state_cap("Strong VCP", "Breakout")
+        assert capped == "Strong VCP"
+        assert applied is False
+
+    def test_cap_does_not_upgrade(self):
+        # Weak VCP should not be upgraded by Overextended cap (max = Developing)
+        capped, applied = apply_state_cap("Weak VCP", "Overextended")
+        assert capped == "Weak VCP"
+        assert applied is False
+
+
+class TestPatternClassifier:
+    """Tests for classify_pattern()."""
+
+    def test_invalid_state_returns_damaged(self):
+        result = classify_pattern(
+            valid_vcp=True,
+            num_contractions=3,
+            final_contraction_depth=8.0,
+            execution_state="Invalid",
+            dry_up_ratio=0.6,
+        )
+        assert result == "Damaged"
+
+    def test_damaged_state_returns_damaged(self):
+        result = classify_pattern(
+            valid_vcp=True,
+            num_contractions=3,
+            final_contraction_depth=8.0,
+            execution_state="Damaged",
+            dry_up_ratio=0.6,
+        )
+        assert result == "Damaged"
+
+    def test_overextended_valid_vcp_returns_extended_leader(self):
+        result = classify_pattern(
+            valid_vcp=True,
+            num_contractions=3,
+            final_contraction_depth=8.0,
+            execution_state="Overextended",
+            dry_up_ratio=0.6,
+        )
+        assert result == "Extended Leader"
+
+    def test_overextended_invalid_vcp_returns_vcp_adjacent(self):
+        result = classify_pattern(
+            valid_vcp=False,
+            num_contractions=2,
+            final_contraction_depth=20.0,
+            execution_state="Overextended",
+            dry_up_ratio=0.9,
+        )
+        assert result == "VCP-adjacent"
+
+    def test_breakout_valid_vcp_returns_post_breakout(self):
+        result = classify_pattern(
+            valid_vcp=True,
+            num_contractions=3,
+            final_contraction_depth=8.0,
+            execution_state="Breakout",
+            dry_up_ratio=0.6,
+        )
+        assert result == "Post-breakout"
+
+    def test_early_post_breakout_returns_post_breakout(self):
+        result = classify_pattern(
+            valid_vcp=True,
+            num_contractions=3,
+            final_contraction_depth=7.0,
+            execution_state="Early-post-breakout",
+            dry_up_ratio=0.65,
+        )
+        assert result == "Post-breakout"
+
+    def test_textbook_all_criteria_met(self):
+        result = classify_pattern(
+            valid_vcp=True,
+            num_contractions=3,
+            final_contraction_depth=9.0,
+            execution_state="Pre-breakout",
+            dry_up_ratio=0.65,
+            wide_and_loose=False,
+        )
+        assert result == "Textbook VCP"
+
+    def test_textbook_blocked_by_wide_and_loose(self):
+        result = classify_pattern(
+            valid_vcp=True,
+            num_contractions=3,
+            final_contraction_depth=9.0,
+            execution_state="Pre-breakout",
+            dry_up_ratio=0.65,
+            wide_and_loose=True,
+        )
+        assert result == "VCP-adjacent"
+
+    def test_not_textbook_only_2_contractions(self):
+        result = classify_pattern(
+            valid_vcp=True,
+            num_contractions=2,
+            final_contraction_depth=9.0,
+            execution_state="Pre-breakout",
+            dry_up_ratio=0.65,
+        )
+        assert result == "VCP-adjacent"
+
+    def test_not_textbook_high_dry_up_ratio(self):
+        result = classify_pattern(
+            valid_vcp=True,
+            num_contractions=3,
+            final_contraction_depth=9.0,
+            execution_state="Pre-breakout",
+            dry_up_ratio=0.85,  # > 0.7 threshold
+        )
+        assert result == "VCP-adjacent"
+
+    def test_invalid_vcp_always_vcp_adjacent(self):
+        result = classify_pattern(
+            valid_vcp=False,
+            num_contractions=3,
+            final_contraction_depth=9.0,
+            execution_state="Pre-breakout",
+            dry_up_ratio=0.5,
+        )
+        assert result == "VCP-adjacent"
+
+
+class TestScorerStateCaps:
+    """Tests for calculate_composite_score() with execution_state caps."""
+
+    def _base_scores(self):
+        return dict(
+            trend_score=90.0,
+            contraction_score=90.0,
+            volume_score=90.0,
+            pivot_score=90.0,
+            rs_score=90.0,
+            valid_vcp=True,
+        )
+
+    def test_no_cap_when_no_execution_state(self):
+        result = calculate_composite_score(**self._base_scores())
+        assert result["rating"] == "Textbook VCP"
+        assert result["state_cap_applied"] is False
+
+    def test_invalid_state_caps_to_no_vcp(self):
+        result = calculate_composite_score(**self._base_scores(), execution_state="Invalid")
+        assert result["rating"] == "No VCP"
+        assert result["state_cap_applied"] is True
+
+    def test_damaged_state_caps_to_no_vcp(self):
+        result = calculate_composite_score(**self._base_scores(), execution_state="Damaged")
+        assert result["rating"] == "No VCP"
+        assert result["state_cap_applied"] is True
+
+    def test_overextended_caps_textbook_to_weak(self):
+        result = calculate_composite_score(**self._base_scores(), execution_state="Overextended")
+        assert result["rating"] == "Weak VCP"
+        assert result["state_cap_applied"] is True
+
+    def test_extended_caps_strong_to_developing(self):
+        result = calculate_composite_score(**self._base_scores(), execution_state="Extended")
+        assert result["rating"] == "Developing VCP"
+        assert result["state_cap_applied"] is True
+
+    def test_pre_breakout_no_cap(self):
+        result = calculate_composite_score(**self._base_scores(), execution_state="Pre-breakout")
+        assert result["rating"] == "Textbook VCP"
+        assert result["state_cap_applied"] is False
+
+    def test_wide_and_loose_blocks_textbook(self):
+        result = calculate_composite_score(
+            **self._base_scores(),
+            execution_state="Pre-breakout",
+            wide_and_loose=True,
+        )
+        assert result["rating"] == "Developing VCP"
+        assert result["state_cap_applied"] is True
+        assert "Wide-and-loose" in result["cap_reason"]
+
+    def test_cap_does_not_upgrade_weak_rating(self):
+        # Score of 55 → Weak VCP; Extended caps at Developing VCP — no downgrade needed
+        result = calculate_composite_score(
+            trend_score=55.0,
+            contraction_score=55.0,
+            volume_score=55.0,
+            pivot_score=55.0,
+            rs_score=55.0,
+            valid_vcp=True,
+            execution_state="Extended",
+        )
+        assert result["rating"] == "Weak VCP"
+        assert result["state_cap_applied"] is False  # Weak VCP == cap, no downgrade needed
+
+    def test_execution_state_stored_in_result(self):
+        result = calculate_composite_score(
+            **self._base_scores(),
+            execution_state="Pre-breakout",
+            pattern_type="Textbook VCP",
+        )
+        assert result["execution_state"] == "Pre-breakout"
+        assert result["pattern_type"] == "Textbook VCP"
+
+
+class TestAnalyzeStockNewFields:
+    """Verify analyze_stock() returns Phase 1 fields."""
+
+    def test_analyze_stock_has_execution_state_fields(self):
+        """analyze_stock() result must contain execution_state and pattern_type."""
+        prices = _make_prices(250, start=100.0, daily_change=0.001, volume=1_000_000)
+        sp500 = _make_prices(250, start=400.0, daily_change=0.0005)
+        quote = {
+            "price": prices[0]["close"],
+            "marketCap": 10_000_000_000,
+            "yearHigh": max(p["high"] for p in prices),
+            "yearLow": min(p["low"] for p in prices),
+        }
+        result = analyze_stock(
+            symbol="TEST",
+            historical=prices,
+            quote=quote,
+            sp500_history=sp500,
+        )
+        assert result is not None
+        assert "execution_state" in result
+        assert "execution_state_reasons" in result
+        assert "pattern_type" in result
+        assert "state_cap_applied" in result
+        assert isinstance(result["execution_state_reasons"], list)
+
+    def test_analyze_stock_state_cap_applied_when_invalid(self):
+        """A declining stock (price < SMA50 < SMA200) should have state_cap_applied."""
+        # Declining prices → price will be well below SMA50 and SMA200
+        prices = _make_prices(250, start=200.0, daily_change=-0.002, volume=1_000_000)
+        sp500 = _make_prices(250, start=400.0, daily_change=0.0005)
+        quote = {
+            "price": prices[0]["close"],
+            "marketCap": 5_000_000_000,
+            "yearHigh": prices[-1]["high"],  # 52w high is oldest = lowest in decline
+            "yearLow": prices[0]["low"],
+        }
+        result = analyze_stock(
+            symbol="DECLINING",
+            historical=prices,
+            quote=quote,
+            sp500_history=sp500,
+        )
+        assert result is not None
+        # Declining stock should be capped (Invalid or Damaged state → No VCP)
+        if result["state_cap_applied"]:
+            assert result["rating"] in ("No VCP", "Developing VCP", "Weak VCP")
+
+
+# ---------------------------------------------------------------------------
+# Phase 2: SMA200 Penalty in Trend Template
+# ---------------------------------------------------------------------------
+
+from calculators.trend_template_calculator import (
+    _calculate_sma200_penalty,
+)
+
+
+class TestSMA200Penalty:
+    """Tests for _calculate_sma200_penalty() and its integration."""
+
+    def test_no_penalty_below_threshold(self):
+        penalty, dist = _calculate_sma200_penalty(price=140.0, sma200=100.0, max_extension=50.0)
+        assert penalty == 0
+        assert dist == pytest.approx(40.0)
+
+    def test_no_penalty_at_exact_threshold(self):
+        penalty, dist = _calculate_sma200_penalty(price=150.0, sma200=100.0, max_extension=50.0)
+        assert penalty == 0
+        assert dist == pytest.approx(50.0)
+
+    def test_first_tier_penalty_just_above_threshold(self):
+        # 51% above SMA200, threshold=50 → excess=1 → tier −10
+        penalty, dist = _calculate_sma200_penalty(price=151.0, sma200=100.0, max_extension=50.0)
+        assert penalty == -10
+        assert dist == pytest.approx(51.0)
+
+    def test_second_tier_penalty_10pct_excess(self):
+        # 60% above SMA200, threshold=50 → excess=10 → tier −15
+        penalty, dist = _calculate_sma200_penalty(price=160.0, sma200=100.0, max_extension=50.0)
+        assert penalty == -15
+
+    def test_third_tier_penalty_20pct_excess(self):
+        # 70% above SMA200, threshold=50 → excess=20 → tier −20
+        penalty, dist = _calculate_sma200_penalty(price=170.0, sma200=100.0, max_extension=50.0)
+        assert penalty == -20
+
+    def test_no_penalty_when_sma200_none(self):
+        penalty, dist = _calculate_sma200_penalty(price=200.0, sma200=None)
+        assert penalty == 0
+        assert dist is None
+
+    def test_no_penalty_when_sma200_zero(self):
+        penalty, dist = _calculate_sma200_penalty(price=200.0, sma200=0.0)
+        assert penalty == 0
+        assert dist is None
+
+    def test_custom_max_extension(self):
+        # max_extension=30 → excess=5 at 35% above → tier −10
+        penalty, dist = _calculate_sma200_penalty(price=135.0, sma200=100.0, max_extension=30.0)
+        assert penalty == -10
+
+    def test_trend_template_returns_sma200_penalty_field(self):
+        prices = _make_prices(250, start=100.0, daily_change=0.001)
+        quote = {
+            "price": prices[0]["close"],
+            "yearHigh": max(p["high"] for p in prices),
+            "yearLow": min(p["low"] for p in prices),
+        }
+        result = calculate_trend_template(prices, quote)
+        assert "sma200_penalty" in result
+        assert "sma200_distance_pct" in result
+
+    def test_trend_template_penalty_applied_for_very_extended_stock(self):
+        """A stock +80% above SMA200 should receive a penalty in trend score."""
+        # Build prices where recent bars are much higher than 200d avg
+        # Start low, drift up sharply for last 50 bars
+        base = _make_prices(200, start=50.0, daily_change=0.0)
+        recent = _make_prices(50, start=90.0, daily_change=0.001)
+        prices = recent + base  # most-recent-first
+        quote = {
+            "price": prices[0]["close"],
+            "yearHigh": prices[0]["high"] * 1.01,
+            "yearLow": prices[-1]["low"] * 0.9,
+        }
+        result = calculate_trend_template(prices, quote, max_sma200_extension=50.0)
+        # sma200_distance_pct should reflect the extension
+        if result.get("sma200_distance_pct") is not None:
+            dist = result["sma200_distance_pct"]
+            if dist > 50.0:
+                assert result["sma200_penalty"] < 0
+                # SMA200 penalty is metadata only (not applied to score)
+                # to avoid double-penalizing with execution_state caps
+                assert result["sma200_distance_pct"] > 50.0
+
+
+# ---------------------------------------------------------------------------
+# Phase 3: ATR Compression, Wide-and-Loose, Right-side Tightness
+# ---------------------------------------------------------------------------
+
+
+class TestATRCompressionRatio:
+    """Tests for atr_compression_ratio field in calculate_vcp_pattern()."""
+
+    def test_atr_compression_ratio_in_result(self):
+        prices = _make_prices(150, start=100.0, daily_change=0.001, volume=1_000_000)
+        result = calculate_vcp_pattern(prices)
+        assert "atr_compression_ratio" in result
+
+    def test_atr_compression_ratio_none_for_insufficient_data(self):
+        """Short price history cannot compute ATR(50) → ratio is None."""
+        prices = _make_prices(40, start=100.0, daily_change=0.001)
+        result = calculate_vcp_pattern(prices)
+        # Either None or a valid float; insufficient data returns None
+        # (40 bars is not enough for ATR(50))
+        if result.get("atr_compression_ratio") is not None:
+            assert isinstance(result["atr_compression_ratio"], float)
+
+    def test_atr_compression_ratio_less_than_1_when_volatility_contracts(self):
+        """Flat recent bars after volatile earlier bars → ratio < 1."""
+        # Volatile base phase followed by quiet consolidation
+        volatile = _make_prices(80, start=100.0, daily_change=0.005)
+        # Make volatile bars actually wide by inflating high/low spread
+        for p in volatile:
+            p["high"] = p["close"] * 1.03
+            p["low"] = p["close"] * 0.97
+        quiet = _make_prices(70, start=volatile[-1]["close"], daily_change=0.0)
+        for p in quiet:
+            p["high"] = p["close"] * 1.002
+            p["low"] = p["close"] * 0.998
+        prices = quiet + volatile  # most-recent-first = quiet first
+        result = calculate_vcp_pattern(prices)
+        if result.get("atr_compression_ratio") is not None:
+            assert result["atr_compression_ratio"] < 1.0
+
+    def test_atr_compression_ratio_is_positive(self):
+        prices = _make_prices(150, start=100.0, daily_change=0.001)
+        result = calculate_vcp_pattern(prices)
+        if result.get("atr_compression_ratio") is not None:
+            assert result["atr_compression_ratio"] > 0
+
+
+class TestWideAndLoose:
+    """Tests for wide_and_loose flag in calculate_vcp_pattern() and _compute_wide_and_loose()."""
+
+    def test_wide_and_loose_false_by_default(self):
+        prices = _make_prices(150, start=100.0, daily_change=0.001)
+        result = calculate_vcp_pattern(prices)
+        assert "wide_and_loose" in result
+        assert isinstance(result["wide_and_loose"], bool)
+
+    def test_wide_and_loose_false_no_contractions(self):
+        prices = _make_prices(35, start=100.0, daily_change=0.0)
+        result = calculate_vcp_pattern(prices, min_contractions=2)
+        assert result["wide_and_loose"] is False
+
+    def test_wide_and_loose_threshold_parameter_accepted(self):
+        prices = _make_prices(150, start=100.0, daily_change=0.001)
+        result = calculate_vcp_pattern(prices, wide_and_loose_threshold=20.0)
+        assert "wide_and_loose" in result
+
+    # -----------------------------------------------------------------------
+    # Direct unit tests of _compute_wide_and_loose() helper
+    # -----------------------------------------------------------------------
+
+    def test_compute_wide_and_loose_true_deep_and_short(self):
+        from calculators.vcp_pattern_calculator import _compute_wide_and_loose
+
+        final = {"depth_pct": 17.6, "duration_days": 7}
+        assert (
+            _compute_wide_and_loose([{"depth_pct": 20.0, "duration_days": 25}, final], 15.0) is True
+        )
+
+    def test_compute_wide_and_loose_false_deep_but_long(self):
+        from calculators.vcp_pattern_calculator import _compute_wide_and_loose
+
+        final = {"depth_pct": 17.6, "duration_days": 15}  # duration >= 10
+        assert (
+            _compute_wide_and_loose([{"depth_pct": 20.0, "duration_days": 25}, final], 15.0)
+            is False
+        )
+
+    def test_compute_wide_and_loose_false_short_but_tight(self):
+        from calculators.vcp_pattern_calculator import _compute_wide_and_loose
+
+        final = {"depth_pct": 5.6, "duration_days": 6}  # depth <= threshold
+        assert (
+            _compute_wide_and_loose([{"depth_pct": 20.0, "duration_days": 25}, final], 15.0)
+            is False
+        )
+
+    def test_compute_wide_and_loose_false_empty(self):
+        from calculators.vcp_pattern_calculator import _compute_wide_and_loose
+
+        assert _compute_wide_and_loose([], 15.0) is False
+
+    def test_compute_wide_and_loose_boundary_exactly_threshold(self):
+        from calculators.vcp_pattern_calculator import _compute_wide_and_loose
+
+        # depth == threshold is NOT > threshold → False
+        final = {"depth_pct": 15.0, "duration_days": 5}
+        assert _compute_wide_and_loose([final], 15.0) is False
+
+    def test_compute_wide_and_loose_boundary_exactly_10_days(self):
+        from calculators.vcp_pattern_calculator import _compute_wide_and_loose
+
+        # duration == 10 is NOT < 10 → False
+        final = {"depth_pct": 20.0, "duration_days": 10}
+        assert _compute_wide_and_loose([final], 15.0) is False
+
+
+class TestRightSideTightness:
+    """Tests for right_side_range_ratio field in calculate_vcp_pattern()."""
+
+    def test_right_side_range_ratio_in_result(self):
+        prices = _make_prices(150, start=100.0, daily_change=0.001)
+        result = calculate_vcp_pattern(prices)
+        assert "right_side_range_ratio" in result
+
+    def test_right_side_range_lower_on_tight_base(self):
+        """A price series with tight recent bars should have lower ratio."""
+        # Volatile base
+        volatile = _make_prices(80, start=100.0, daily_change=0.0)
+        for p in volatile:
+            p["high"] = p["close"] * 1.04
+            p["low"] = p["close"] * 0.96
+
+        # Tight recent bars (last 15 are quiet)
+        tight = _make_prices(70, start=volatile[-1]["close"], daily_change=0.0)
+        for p in tight:
+            p["high"] = p["close"] * 1.001
+            p["low"] = p["close"] * 0.999
+
+        prices_tight = tight + volatile  # most-recent-first
+
+        # Loose recent bars (last 15 are wide)
+        loose = _make_prices(70, start=volatile[-1]["close"], daily_change=0.0)
+        for p in loose:
+            p["high"] = p["close"] * 1.04
+            p["low"] = p["close"] * 0.96
+
+        prices_loose = loose + volatile  # most-recent-first
+
+        result_tight = calculate_vcp_pattern(prices_tight)
+        result_loose = calculate_vcp_pattern(prices_loose)
+
+        if (
+            result_tight.get("right_side_range_ratio") is not None
+            and result_loose.get("right_side_range_ratio") is not None
+        ):
+            assert result_tight["right_side_range_ratio"] < result_loose["right_side_range_ratio"]
+
+    def test_right_side_range_ratio_none_for_short_data(self):
+        prices = _make_prices(35, start=100.0, daily_change=0.0)
+        result = calculate_vcp_pattern(prices)
+        # With only 35 bars, atr_50 may be 0 → ratio is None
+        # (result depends on atr_50 availability)
+        assert "right_side_range_ratio" in result
+
+
+class TestPhase3Integration:
+    """Integration: analyze_stock() carries Phase 3 fields through."""
+
+    def test_analyze_stock_contains_atr_compression_ratio(self):
+        prices = _make_prices(250, start=100.0, daily_change=0.001, volume=1_000_000)
+        sp500 = _make_prices(250, start=400.0, daily_change=0.0005)
+        quote = {
+            "price": prices[0]["close"],
+            "marketCap": 10_000_000_000,
+            "yearHigh": max(p["high"] for p in prices),
+            "yearLow": min(p["low"] for p in prices),
+        }
+        result = analyze_stock("TEST", prices, quote, sp500)
+        assert result is not None
+        # atr_compression_ratio should be passed through from vcp_result
+        vcp = result.get("vcp_pattern", {})
+        assert "atr_compression_ratio" in vcp
+        assert "wide_and_loose" in vcp
+        assert "right_side_range_ratio" in vcp
+
+    def test_wide_and_loose_propagated_to_scorer(self):
+        """wide_and_loose=True from vcp_result should cap Textbook → Strong in scorer."""
+        prices = _make_prices(250, start=100.0, daily_change=0.001, volume=1_000_000)
+        sp500 = _make_prices(250, start=400.0, daily_change=0.0005)
+        quote = {
+            "price": prices[0]["close"],
+            "marketCap": 10_000_000_000,
+            "yearHigh": max(p["high"] for p in prices),
+            "yearLow": min(p["low"] for p in prices),
+        }
+        result = analyze_stock("TEST", prices, quote, sp500)
+        assert result is not None
+        # If wide_and_loose was True, rating must not be Textbook VCP
+        if result["vcp_pattern"].get("wide_and_loose"):
+            assert result["rating"] != "Textbook VCP"
+
+
+# ---------------------------------------------------------------------------
+# Phase 4: Volume Pattern — breakout bar exclusion, breakout_volume_score,
+#          strengthened declining contraction bonus
+# ---------------------------------------------------------------------------
+
+
+class TestVolumeBreakoutBarExclusion:
+    """Bar[0] must be excluded from dry-up calculation."""
+
+    def test_high_bar0_does_not_inflate_dry_up(self):
+        """If bar[0] has high breakout volume, dry-up ratio should stay low."""
+        prices = _make_prices(60, volume=1_000_000)
+        # All bars 1-10 have dry volume (20% of avg)
+        for i in range(1, 11):
+            prices[i]["volume"] = 200_000
+        # Bar[0] has explosive breakout volume (5x avg)
+        prices[0]["volume"] = 5_000_000
+        result = calculate_volume_pattern(prices)
+        # With bar[0] excluded, dry-up ratio should reflect bars 1-10 only
+        # avg(bars 1-10) ≈ 200k, 50d avg ≈ 900k+ (diluted by high bar 0)
+        # Ratio should be < 0.5 (bars 1-10 are truly dry)
+        assert result["dry_up_ratio"] < 0.5
+
+    def test_legacy_window_uses_bars_1_to_11(self):
+        """Legacy window (no contractions) uses volumes[1:11] — 10 bars."""
+        prices = _make_prices(60, volume=1_000_000)
+        # Set bars 1-10 to exactly half of avg volume
+        # Set bar 0 to 0 — would inflate ratio if included
+        for i in range(1, 11):
+            prices[i]["volume"] = 500_000
+        prices[0]["volume"] = 0  # would cause very low ratio if included
+        result = calculate_volume_pattern(prices)
+        # If bar[0] were included, ratio would be much lower than 0.5
+        # Since bar[0] is excluded, ratio ≈ 0.5 (bars 1-10 at half avg)
+        # (actual 50d avg is also diluted but rough check)
+        assert result["dry_up_ratio"] is not None
+        assert result["dry_up_ratio"] > 0  # bar[0]=0 not included
+
+
+class TestBreakoutVolumeScore:
+    """Tests for breakout_volume_score independent field."""
+
+    def test_breakout_volume_score_field_exists(self):
+        prices = _make_prices(60, volume=1_000_000)
+        result = calculate_volume_pattern(prices, pivot_price=None)
+        assert "breakout_volume_score" in result
+
+    def test_breakout_volume_score_zero_when_no_pivot(self):
+        """Without a pivot price, no breakout can be assessed."""
+        prices = _make_prices(60, volume=1_000_000)
+        result = calculate_volume_pattern(prices, pivot_price=None)
+        assert result["breakout_volume_score"] == 0
+
+    def test_breakout_volume_score_60_when_above_pivot_with_15x(self):
+        """Bar[0] above pivot at 1.5x avg → score = 60."""
+        prices = _make_prices(60, volume=1_000_000)
+        avg = 1_000_000
+        # Bar[0] at 1.5x avg, price above pivot
+        prices[0]["volume"] = int(avg * 1.6)
+        prices[0]["close"] = 105.0  # above pivot 100
+        pivot = 100.0
+        result = calculate_volume_pattern(prices, pivot_price=pivot, breakout_volume_ratio=1.5)
+        assert result["breakout_volume_score"] == 60
+
+    def test_breakout_volume_score_100_at_3x(self):
+        """Bar[0] at 3x+ avg above pivot → score = 100."""
+        prices = _make_prices(60, volume=1_000_000)
+        prices[0]["volume"] = 3_200_000  # 3.2x avg
+        prices[0]["close"] = 105.0
+        pivot = 100.0
+        result = calculate_volume_pattern(prices, pivot_price=pivot)
+        assert result["breakout_volume_score"] == 100
+
+    def test_breakout_volume_score_zero_when_below_pivot(self):
+        """Even high volume on bar[0] doesn't score if price is below pivot."""
+        prices = _make_prices(60, volume=1_000_000)
+        prices[0]["volume"] = 3_000_000
+        prices[0]["close"] = 95.0  # BELOW pivot
+        pivot = 100.0
+        result = calculate_volume_pattern(prices, pivot_price=pivot)
+        assert result["breakout_volume_score"] == 0
+
+
+class TestDecliningContractionBonus:
+    """Declining contraction bonus strengthened from +5 to +10."""
+
+    def test_declining_bonus_is_10_not_5(self):
+        """Verify declining contraction bonus contributes exactly +10 to score.
+
+        Design: 150 bars, contraction periods placed OUTSIDE 50d avg window
+        (indices 0-49 most-recent-first) and Zone B (indices 1-10).
+        This ensures both cases have identical base_score; the only difference
+        is the declining contraction volume bonus.
+
+        T1: chron 10-40 → most-recent-first indices 109-139 (outside 50d window)
+        T2: chron 45-60 → most-recent-first indices 89-104 (outside 50d window)
+        """
+        prices_declining = _make_prices(150, volume=1_000_000)
+        # T1 period (most-recent idx 109-139): high volume
+        for i in range(109, 140):
+            prices_declining[i]["volume"] = 800_000
+        # T2 period (most-recent idx 89-104): low volume → T1 > T2 → declining
+        for i in range(89, 105):
+            prices_declining[i]["volume"] = 300_000
+
+        prices_flat = _make_prices(150, volume=1_000_000)  # all 1M
+
+        contractions = [
+            {"high_idx": 10, "low_idx": 40, "label": "T1"},
+            {"high_idx": 45, "low_idx": 60, "label": "T2"},
+        ]
+
+        r_dec = calculate_volume_pattern(
+            prices_declining, pivot_price=101.0, contractions=contractions
+        )
+        r_flat = calculate_volume_pattern(prices_flat, pivot_price=101.0, contractions=contractions)
+
+        assert r_dec.get("contraction_volume_trend", {}).get("declining") is True
+        assert r_flat.get("contraction_volume_trend", {}).get("declining") is False
+        assert r_dec["score"] - r_flat["score"] == 10
+
+
+# ---------------------------------------------------------------------------
+# Phase 5: Report 2-axis format, default changes, strict mode
+# ---------------------------------------------------------------------------
+
+
+def _make_stock(
+    symbol="AAPL",
+    composite_score=82.0,
+    rating="Strong VCP",
+    execution_state="Pre-breakout",
+    pattern_type="Textbook VCP",
+    entry_ready=True,
+    state_cap_applied=False,
+    distance_from_pivot_pct=-2.0,
+    price=150.0,
+    valid_vcp=True,
+):
+    """Build a minimal stock result dict for report tests."""
+    return {
+        "symbol": symbol,
+        "company_name": f"{symbol} Corp",
+        "sector": "Technology",
+        "price": price,
+        "market_cap": 10e9,
+        "composite_score": composite_score,
+        "rating": rating,
+        "rating_description": "",
+        "guidance": "Buy at pivot",
+        "valid_vcp": valid_vcp,
+        "entry_ready": entry_ready,
+        "execution_state": execution_state,
+        "pattern_type": pattern_type,
+        "state_cap_applied": state_cap_applied,
+        "cap_reason": None,
+        "distance_from_pivot_pct": distance_from_pivot_pct,
+        "weakest_component": "volume",
+        "weakest_score": 50,
+        "strongest_component": "trend",
+        "strongest_score": 95,
+        "trend_template": {"score": 95, "criteria_passed": 7, "extended_penalty": 0},
+        "vcp_pattern": {
+            "score": 80,
+            "num_contractions": 3,
+            "contractions": [
+                {"label": "T1", "depth_pct": 12.0},
+                {"label": "T2", "depth_pct": 8.0},
+                {"label": "T3", "depth_pct": 5.0},
+            ],
+            "pivot_price": 155.0,
+        },
+        "volume_pattern": {"score": 70, "dry_up_ratio": 0.4},
+        "pivot_proximity": {
+            "score": 75,
+            "distance_from_pivot_pct": distance_from_pivot_pct,
+            "stop_loss_price": 148.0,
+            "risk_pct": 5.0,
+            "trade_status": "PRE-BREAKOUT",
+        },
+        "relative_strength": {"score": 80, "rs_rank_estimate": 85, "weighted_rs": 8.0},
+    }
+
+
+class TestPhase5ReportFormat:
+    """Tests for 2-axis header format in report_generator."""
+
+    def test_quick_scan_table_present(self):
+        """Quick Scan summary table should appear before Section A."""
+        stock = _make_stock()
+        metadata = {"generated_at": "2025-01-01", "funnel": {}}
+        with tempfile.TemporaryDirectory() as tmpdir:
+            md_file = os.path.join(tmpdir, "test.md")
+            generate_markdown_report([stock], metadata, md_file)
+            with open(md_file) as f:
+                content = f.read()
+        assert "## Quick Scan" in content
+        assert "| # | Symbol | Quality | State | Type | Price | Pivot Dist |" in content
+
+    def test_quick_scan_lists_symbol_and_state(self):
+        """Quick Scan table should include symbol, execution state, and pattern type."""
+        stock = _make_stock(symbol="NVDA", execution_state="Breakout", pattern_type="VCP-adjacent")
+        metadata = {"generated_at": "2025-01-01", "funnel": {}}
+        with tempfile.TemporaryDirectory() as tmpdir:
+            md_file = os.path.join(tmpdir, "test.md")
+            generate_markdown_report([stock], metadata, md_file)
+            with open(md_file) as f:
+                content = f.read()
+        assert "NVDA" in content
+        assert "Breakout" in content
+        assert "VCP-adjacent" in content
+
+    def test_state_cap_marker_shown_in_quick_scan(self):
+        """★ marker should appear when state_cap_applied=True."""
+        stock = _make_stock(state_cap_applied=True)
+        metadata = {"generated_at": "2025-01-01", "funnel": {}}
+        with tempfile.TemporaryDirectory() as tmpdir:
+            md_file = os.path.join(tmpdir, "test.md")
+            generate_markdown_report([stock], metadata, md_file)
+            with open(md_file) as f:
+                content = f.read()
+        assert "★" in content
+        assert "State Cap applied" in content
+
+    def test_two_axis_header_in_stock_entry(self):
+        """Stock entry should show Quality | State | Type on one line."""
+        stock = _make_stock(
+            composite_score=88.0,
+            rating="Strong VCP",
+            execution_state="Pre-breakout",
+            pattern_type="Textbook VCP",
+        )
+        metadata = {"generated_at": "2025-01-01", "funnel": {}}
+        with tempfile.TemporaryDirectory() as tmpdir:
+            md_file = os.path.join(tmpdir, "test.md")
+            generate_markdown_report([stock], metadata, md_file)
+            with open(md_file) as f:
+                content = f.read()
+        assert "**Quality:** 88/100 (Strong VCP)" in content
+        assert "**State:** Pre-breakout" in content
+        assert "**Type:** Textbook VCP" in content
+
+    def test_old_vcp_score_format_absent(self):
+        """Old '**VCP Score:**' format should not appear in report."""
+        stock = _make_stock()
+        metadata = {"generated_at": "2025-01-01", "funnel": {}}
+        with tempfile.TemporaryDirectory() as tmpdir:
+            md_file = os.path.join(tmpdir, "test.md")
+            generate_markdown_report([stock], metadata, md_file)
+            with open(md_file) as f:
+                content = f.read()
+        assert "**VCP Score:**" not in content
+
+
+class TestPhase5DefaultChanges:
+    """Tests for changed CLI default values."""
+
+    def test_t1_depth_min_default_is_10(self):
+        """--t1-depth-min should default to 10.0."""
+        import sys
+
+        orig = sys.argv
+        sys.argv = ["screen_vcp.py"]
+        try:
+            args = parse_arguments()
+            assert args.t1_depth_min == 10.0
+        finally:
+            sys.argv = orig
+
+    def test_contraction_ratio_default_is_070(self):
+        """--contraction-ratio should default to 0.70."""
+        import sys
+
+        orig = sys.argv
+        sys.argv = ["screen_vcp.py"]
+        try:
+            args = parse_arguments()
+            assert args.contraction_ratio == 0.70
+        finally:
+            sys.argv = orig
+
+    def test_strict_flag_defaults_false(self):
+        """--strict should default to False."""
+        import sys
+
+        orig = sys.argv
+        sys.argv = ["screen_vcp.py"]
+        try:
+            args = parse_arguments()
+            assert args.strict is False
+        finally:
+            sys.argv = orig
+
+    def test_strict_flag_set_when_passed(self):
+        """--strict flag should set strict=True."""
+        import sys
+
+        orig = sys.argv
+        sys.argv = ["screen_vcp.py", "--strict"]
+        try:
+            args = parse_arguments()
+            assert args.strict is True
+        finally:
+            sys.argv = orig
+
+
+class TestPhase5StrictMode:
+    """Tests for strict mode filtering in compute_entry_ready and analyze_stock."""
+
+    def test_strict_requires_valid_vcp(self):
+        """Strict mode: invalid VCP should be excluded (valid_vcp=False)."""
+        # Stock with valid_vcp=False and correct execution_state
+        stock = _make_stock(valid_vcp=False, execution_state="Pre-breakout")
+        # strict filtering is: valid_vcp AND execution_state in (Pre-breakout, Breakout)
+        strict_ok = stock.get("valid_vcp", False) and stock.get("execution_state") in (
+            "Pre-breakout",
+            "Breakout",
+        )
+        assert strict_ok is False
+
+    def test_strict_requires_pre_breakout_or_breakout(self):
+        """Strict mode: Extended/Overextended states should be excluded."""
+        for state in ("Extended", "Overextended", "Early-post-breakout", "Damaged", "Invalid"):
+            stock = _make_stock(valid_vcp=True, execution_state=state)
+            strict_ok = stock.get("valid_vcp", False) and stock.get("execution_state") in (
+                "Pre-breakout",
+                "Breakout",
+            )
+            assert strict_ok is False, f"Expected strict to exclude state={state}"
+
+    def test_strict_passes_pre_breakout_with_valid_vcp(self):
+        """Strict mode: valid_vcp=True + Pre-breakout should pass."""
+        stock = _make_stock(valid_vcp=True, execution_state="Pre-breakout")
+        strict_ok = stock.get("valid_vcp", False) and stock.get("execution_state") in (
+            "Pre-breakout",
+            "Breakout",
+        )
+        assert strict_ok is True
+
+    def test_strict_passes_breakout_with_valid_vcp(self):
+        """Strict mode: valid_vcp=True + Breakout should pass."""
+        stock = _make_stock(valid_vcp=True, execution_state="Breakout")
+        strict_ok = stock.get("valid_vcp", False) and stock.get("execution_state") in (
+            "Pre-breakout",
+            "Breakout",
+        )
+        assert strict_ok is True

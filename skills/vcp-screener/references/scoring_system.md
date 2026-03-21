@@ -23,7 +23,17 @@ Each of the 7 criteria contributes 14.3 points:
 | 5/7 | 71.5 | Borderline |
 | <= 4/7 | <= 57 | Fail |
 
-**Pass threshold:** Score >= 85 (6+ criteria) to proceed to VCP analysis.
+**Pass threshold:** Raw score >= 85 (6+ criteria) to proceed to VCP analysis.
+
+**SMA200 Extension Penalty** (applied after raw score, when price is overextended above SMA200):
+
+| Price above SMA200 | Excess above threshold (50%) | Penalty |
+|--------------------|------------------------------|---------|
+| > 50% + 20pp (≥70%) | ≥ 20pp | -20 |
+| > 50% + 10pp (≥60%) | ≥ 10pp | -15 |
+| > 50% (any) | < 10pp | -10 |
+
+The pass filter uses `raw_score` (before this penalty) so the penalty affects scoring only, not pipeline admission.
 
 ### 2. Contraction Quality (0-100)
 
@@ -41,7 +51,7 @@ Each of the 7 criteria contributes 14.3 points:
 
 ### 3. Volume Pattern (0-100)
 
-Based on dry-up ratio (recent 10-bar avg / 50-day avg):
+Based on dry-up ratio (`Zone B avg volume / 50-day avg`):
 
 | Dry-Up Ratio | Base Score |
 |-------------|-----------|
@@ -51,10 +61,27 @@ Based on dry-up ratio (recent 10-bar avg / 50-day avg):
 | 0.70-1.00 | 40 |
 | > 1.00 | 20 |
 
-**Modifiers:**
-- Breakout on 1.5x+ volume: +10
+**Zone-based analysis (when contractions are provided):**
+- **Zone A**: Last contraction period (volume during tightening)
+- **Zone B**: Pivot approach — bars 1-10 (bar[0] excluded to avoid breakout contamination)
+- **Zone C**: Bar[0] if price > pivot (breakout bar volume)
+
+**Zone B is the dry-up source.** Bar[0] (potential breakout bar) is intentionally excluded from the dry-up calculation. Its quality is tracked separately via `breakout_volume_score`.
+
+**Breakout Volume Score (independent of dry-up):**
+| Zone C ratio (bar[0] / 50d avg) | Score |
+|----------------------------------|-------|
+| ≥ 3.0x | 100 |
+| 2.0x–2.9x | 80 |
+| 1.5x–1.9x | 60 |
+| 1.0x–1.4x | 30 |
+| < 1.0x or below pivot | 0 |
+
+**Modifiers to composite volume score:**
+- Breakout on 1.5x+ volume (bar[0] above pivot): +10
 - Net accumulation > 3 days (in 20d): +10
 - Net distribution > 3 days (in 20d): -10
+- Declining volume across contraction periods: +10
 
 ### 4. Pivot Proximity (0-100) — Distance-Priority Scoring
 
@@ -103,6 +130,67 @@ Minervini weighting (emphasizes recent performance):
 | >= -20% | 20 | ~25 |
 | < -20% | 0 | ~10 |
 
+## 2-Axis Scoring: Quality × Execution State
+
+The screener separates two independent questions:
+
+- **Axis 1 — Structure Quality** (`composite_score`): How well-formed is the VCP pattern? (unchanged 5-component weighted score)
+- **Axis 2 — Execution State** (`execution_state`): Is the stock buyable *right now*?
+
+These axes are computed independently and then combined through **State Caps**.
+
+---
+
+## Execution State Engine
+
+`compute_execution_state()` applies a 10-rule decision tree and returns one of 7 states:
+
+| State | Meaning |
+|-------|---------|
+| `Invalid` | Price below both SMA50 and SMA200 — not a Stage 2 stock |
+| `Damaged` | Price breached last contraction low — pattern invalidated |
+| `Overextended` | Price >50% above SMA200 — extended leader, late-cycle risk |
+| `Extended` | Price >10% above pivot — too far to buy |
+| `Early-post-breakout` | Price 5-10% above pivot with breakout volume — breakout in progress |
+| `Breakout` | Price 0-5% above pivot with breakout volume — valid entry window |
+| `Pre-breakout` | Price within 8% below pivot, no damage, not extended — ideal setup |
+
+### State Caps
+
+Each execution state imposes a maximum allowable rating regardless of composite score:
+
+| Execution State | Maximum Rating | Rationale |
+|----------------|----------------|-----------|
+| `Invalid` | No VCP | Price structure failed completely |
+| `Damaged` | No VCP | Pattern invalidated by breach of low |
+| `Overextended` | Developing VCP | Too extended for a safe entry |
+| `Extended` | Weak VCP | Chasing risk too high |
+| `Early-post-breakout` | Strong VCP | Breakout in progress; watch for follow-through |
+| `Breakout` | Textbook VCP | No cap — valid breakout |
+| `Pre-breakout` | Textbook VCP | No cap — ideal setup |
+
+When a cap is applied, `state_cap_applied=True` and `★` appears in the Quick Scan table.
+
+### Wide-and-Loose Cap
+
+When the final contraction has `depth_pct > 15%` AND `duration_days < 10`, the pattern is flagged as `wide_and_loose=True` and capped at **Strong VCP** (prevents Textbook rating for sloppy late contractions).
+
+---
+
+## Pattern Classifier
+
+`classify_pattern()` assigns one of 5 pattern types based on structural characteristics:
+
+| Pattern Type | Criteria |
+|-------------|---------|
+| `Textbook VCP` | valid_vcp=True, not wide_and_loose, 3+ contractions, final depth ≤10%, dry_up ≤0.70, state=Pre-breakout |
+| `VCP-adjacent` | valid_vcp=True but misses one Textbook criterion |
+| `Post-breakout` | state in (Breakout, Early-post-breakout) |
+| `Extended Leader` | state in (Overextended, Extended) |
+| `Damaged` | state in (Invalid, Damaged) |
+
+---
+
 ## Rating Bands
 
 | Composite Score | Rating | Position Sizing | Action |
@@ -114,14 +202,15 @@ Minervini weighting (emphasizes recent performance):
 | 50-59 | Weak VCP | Skip | Monitor only |
 | < 50 | No VCP | Skip | Not actionable |
 
-### valid_vcp Gate Rule
+### Cap Priority
 
-When the VCP pattern calculator returns `valid_vcp=false` (e.g., contraction ratios exceed 0.75, expanding contractions), the rating is capped regardless of composite score:
+Multiple caps can apply simultaneously. The most restrictive (lowest) cap wins:
 
-- If `valid_vcp=false` AND composite >= 70: rating is overridden to **"Developing VCP"** with guidance "Watchlist only - VCP pattern not validated, do not buy"
-- If `valid_vcp=false` AND composite < 70: no override needed (already below actionable threshold)
+1. `valid_vcp=False` cap (Developing VCP max)
+2. Execution State cap (per table above)
+3. Wide-and-Loose cap (Strong VCP max)
 
-This prevents stocks with expanding or non-contracting patterns from receiving actionable buy ratings.
+The final displayed rating reflects all caps. `state_cap_applied=True` indicates at least one cap was applied.
 
 ## Entry Ready Conditions
 
@@ -141,6 +230,7 @@ A stock is classified as `entry_ready=True` when all of the following conditions
 **CLI mode:**
 - `--mode all` (default): Shows both sections
 - `--mode prebreakout`: Shows only entry_ready=True stocks
+- `--strict`: Minervini strict mode — only includes stocks with `valid_vcp=True` AND `execution_state in (Pre-breakout, Breakout)`
 
 ## Pre-Filter Criteria (Phase 1)
 

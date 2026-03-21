@@ -26,6 +26,7 @@ def calculate_trend_template(
     quote_data: dict,
     rs_rank: Optional[int] = None,
     ext_threshold: float = 8.0,
+    max_sma200_extension: float = 50.0,
 ) -> dict:
     """
     Evaluate stock against Minervini's 7-point Trend Template.
@@ -173,6 +174,15 @@ def calculate_trend_template(
     extended_penalty, sma50_distance_pct = _calculate_extended_penalty(
         price, sma50, base_threshold=ext_threshold
     )
+
+    # SMA200 extension penalty: deduct for price too far above SMA200
+    sma200_penalty, sma200_distance_pct = _calculate_sma200_penalty(
+        price, sma200, max_extension=max_sma200_extension
+    )
+
+    # SMA200 penalty excluded from score to avoid double-penalizing
+    # with execution_state (which already uses sma200_distance_pct for
+    # Overextended classification). SMA200 penalty kept as metadata.
     score = max(0, raw_score + extended_penalty)
 
     return {
@@ -180,8 +190,12 @@ def calculate_trend_template(
         "raw_score": raw_score,
         "passed": passed,
         "extended_penalty": extended_penalty,
+        "sma200_penalty": sma200_penalty,
         "sma50_distance_pct": round(sma50_distance_pct, 2)
         if sma50_distance_pct is not None
+        else None,
+        "sma200_distance_pct": round(sma200_distance_pct, 2)
+        if sma200_distance_pct is not None
         else None,
         "criteria_passed": passed_count,
         "criteria_total": 7,
@@ -191,6 +205,50 @@ def calculate_trend_template(
         "sma200": round(sma200, 2) if sma200 else None,
         "error": None,
     }
+
+
+def _calculate_sma200_penalty(
+    price: float,
+    sma200: Optional[float],
+    max_extension: float = 50.0,
+) -> tuple:
+    """Calculate penalty for price extended too far above SMA200.
+
+    Penalises highly extended leaders where the uptrend is likely to pause
+    or mean-revert before a fresh VCP base can form.
+
+    Penalty tiers (measured from max_extension threshold, default 50%):
+        distance > max+20% (default >70%) → −20
+        distance > max+10% (default >60%) → −15
+        distance > max     (default >50%) → −10
+        distance > max−10% (default >40%) → −5
+        distance ≤ max−10%               →  0
+
+    Args:
+        price: Current stock price
+        sma200: 200-day simple moving average
+        max_extension: % above SMA200 where the first penalty tier starts
+
+    Returns:
+        (penalty: int, distance_pct: float or None)
+        penalty is 0 or negative.
+    """
+    if sma200 is None or sma200 <= 0:
+        return 0, None
+
+    distance_pct = (price - sma200) / sma200 * 100
+
+    # No penalty when below max_extension
+    if distance_pct <= max_extension:
+        return 0, distance_pct
+
+    excess = distance_pct - max_extension
+    if excess >= 20:
+        return -20, distance_pct
+    elif excess >= 10:
+        return -15, distance_pct
+    else:
+        return -10, distance_pct
 
 
 def _calculate_extended_penalty(

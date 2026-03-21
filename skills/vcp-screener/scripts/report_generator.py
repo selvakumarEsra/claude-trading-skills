@@ -88,6 +88,31 @@ def generate_markdown_report(
     lines.append("---")
     lines.append("")
 
+    # Quick-scan summary table (all displayed candidates at a glance)
+    if results:
+        lines.append("## Quick Scan")
+        lines.append("")
+        lines.append("| # | Symbol | Quality | State | Type | Price | Pivot Dist |")
+        lines.append("|---|--------|---------|-------|------|-------|------------|")
+        for i, stock in enumerate(results, 1):
+            sym = stock.get("symbol", "?")
+            quality = f"{stock.get('composite_score', 0):.0f} ({stock.get('rating', 'N/A')})"
+            state = stock.get("execution_state", "—")
+            ptype = stock.get("pattern_type", "—")
+            price = stock.get("price", 0) or 0
+            dist = stock.get("distance_from_pivot_pct")
+            dist_str = f"{dist:+.1f}%" if dist is not None else "—"
+            cap_marker = "★" if stock.get("state_cap_applied") else ""
+            lines.append(
+                f"| {i} | {sym} | {quality}{cap_marker} | {state} | {ptype} | ${price:.2f} | {dist_str} |"
+            )
+        lines.append("")
+        lines.append("★ = State Cap applied (rating downgraded from raw score)")
+        lines.append("")
+
+    lines.append("---")
+    lines.append("")
+
     # Split results into entry_ready sections
     section_a = [s for s in results if s.get("entry_ready", False)]
     section_b = [s for s in results if not s.get("entry_ready", False)]
@@ -191,11 +216,22 @@ def _format_stock_entry(rank: int, stock: dict) -> list[str]:
     """Format a single stock entry for the Markdown report."""
     lines = []
 
-    # Header with rating indicator
+    # Header — symbol + company name only
+    lines.append(f"### {rank}. {stock['symbol']} - {stock.get('company_name', 'N/A')}")
+
+    # 2-axis quality line: Quality | State | Type
     rating = stock.get("rating", "N/A")
-    valid_vcp = stock.get("valid_vcp", True)
-    indicator = _rating_indicator(stock.get("composite_score", 0), valid_vcp)
-    lines.append(f"### {rank}. {stock['symbol']} - {stock.get('company_name', 'N/A')} {indicator}")
+    composite = stock.get("composite_score", 0)
+    execution_state = stock.get("execution_state", "—")
+    pattern_type = stock.get("pattern_type", "—")
+    cap_note = ""
+    if stock.get("state_cap_applied"):
+        cap_note = " ★"
+    lines.append(
+        f"**Quality:** {composite:.0f}/100 ({rating}){cap_note} | "
+        f"**State:** {execution_state} | "
+        f"**Type:** {pattern_type}"
+    )
 
     # Basic info
     price = stock.get("price", 0) or 0
@@ -207,9 +243,6 @@ def _format_stock_entry(rank: int, stock: dict) -> list[str]:
         f"**Price:** ${price:.2f} | **Market Cap:** {mcap_str} | "
         f"**Sector:** {stock.get('sector', 'N/A')}"
     )
-
-    # Composite score
-    lines.append(f"**VCP Score:** {stock.get('composite_score', 0):.1f}/100 ({rating})")
     lines.append("")
 
     # Component breakdown table
