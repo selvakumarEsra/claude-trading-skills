@@ -63,10 +63,15 @@ def calculate_trend_template(
         c1_pass = price > sma150 and price > sma200
     elif sma150 is not None:
         c1_pass = price > sma150
+    if sma150 is not None:
+        c1_detail = f"Price ${price:.2f} vs SMA150 ${sma150:.2f}"
+        if sma200 is not None:
+            c1_detail += f" / SMA200 ${sma200:.2f}"
+    else:
+        c1_detail = "Insufficient data for SMA150"
     criteria["c1_price_above_sma150_200"] = {
         "passed": c1_pass,
-        "detail": f"Price ${price:.2f} vs SMA150 ${sma150:.2f}"
-        + (f" / SMA200 ${sma200:.2f}" if sma200 else ""),
+        "detail": c1_detail,
     }
 
     # Criterion 2: SMA150 > SMA200

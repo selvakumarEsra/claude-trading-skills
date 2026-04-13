@@ -245,5 +245,6 @@ A comprehensive catalog of all 50 Claude Trading Skills organized by category. B
 | Exposure Coach | Optional | -- | -- |
 | Signal Postmortem | Optional | -- | -- |
 | Downtrend Duration Analyzer | Required | -- | -- |
+| Breakout Trade Planner | -- | -- | -- |
 
 "--" means not required. "Optional" means functionality is enhanced but the skill works without it.

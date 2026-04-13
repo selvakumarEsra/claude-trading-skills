@@ -31,6 +31,7 @@ def generate_json_report(
         sector_counts[s] = sector_counts.get(s, 0) + 1
 
     report = {
+        "schema_version": "1.0",
         "metadata": metadata,
         "results": results,
         "summary": _generate_summary(summary_source),
