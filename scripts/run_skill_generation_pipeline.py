@@ -1044,6 +1044,8 @@ def _rollback_skill(project_root: Path, skill_name: str, branch_name: str) -> No
         f"docs/ja/skills/{skill_name}.md",
         "docs/en/skills/index.md",
         "docs/ja/skills/index.md",
+        "docs/en/skill-catalog.md",
+        "docs/ja/skill-catalog.md",
     ]
     # Unstage any staged changes
     subprocess.run(
