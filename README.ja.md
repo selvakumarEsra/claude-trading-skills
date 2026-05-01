@@ -217,6 +217,13 @@ English README is available at [`README.md`](README.md).
   - O'NeilのDistribution Days、MinerviniのLeading Stock Deterioration、MontyのDefensive Rotationを使用してマーケットトップの確率を検出。
   - 分配と天井形成パターンを識別する6コンポーネント戦術的タイミングシステム。
 
+- **IBD Distribution Day Monitor** (`ibd-distribution-day-monitor`)
+  - QQQ/SPYに対するIBD式Distribution Day（終値0.2%以上下落＋出来高増加）を日次検出。25取引セッション失効・5%上昇による無効化を追跡。
+  - `age_sessions` で各レコードを管理し、`d5/d15/d25` クラスタから NORMAL/CAUTION/HIGH/SEVERE のリスク判定を生成。
+  - TQQQ/QQQ向けエクスポージャ推奨を出力（TQQQは3倍レバレッジ特性により早めに縮小）。トレーリングストップも併せて提案。
+  - Market Top Detectorとの違い: 単一コンポーネント／ETF直結／TQQQ特性考慮。Market Top Detectorは6コンポーネント複合スコア。
+  - FMP APIキーが必要。
+
 - **下落トレンド期間分析** (`downtrend-duration-analyzer`)
   - 過去の下落トレンド期間（ピーク→トラフ）を分析し、セクター・時価総額別のインタラクティブHTMLヒストグラムを生成。
   - ローリングウィンドウによるピーク/トラフ検出、深度・期間フィルター設定可能。
@@ -497,7 +504,7 @@ launchctl start com.trade-analysis.skill-generation-daily
 
 いくつかのスキルはデータアクセスのためにAPIキーが必要です：
 
-- **経済カレンダー取得**、**決算カレンダー**、**CANSLIM株式スクリーナー**、**VCPスクリーナー**、**FTD検出器**、**マクロレジーム検出器**: [Financial Modeling Prep (FMP) API](https://financialmodelingprep.com)キーが必要
+- **経済カレンダー取得**、**決算カレンダー**、**CANSLIM株式スクリーナー**、**VCPスクリーナー**、**FTD検出器**、**マクロレジーム検出器**、**IBD Distribution Day Monitor**: [Financial Modeling Prep (FMP) API](https://financialmodelingprep.com)キーが必要
   - 無料ティア: 250リクエスト/日（ほとんどのスキルに十分）
   - 環境変数を設定: `export FMP_API_KEY=your_key_here`
   - または、プロンプト時にコマンドライン引数でキーを提供

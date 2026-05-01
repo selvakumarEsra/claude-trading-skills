@@ -99,6 +99,7 @@ testpaths = [
     "skills/downtrend-duration-analyzer/scripts/tests",
     "skills/moving-average-regime-detector/scripts/tests",
     "skills/breakout-trade-planner/scripts/tests",
+    "skills/ibd-distribution-day-monitor/scripts/tests",
     "scripts/tests",
 ]
 

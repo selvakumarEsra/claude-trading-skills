@@ -239,6 +239,13 @@ Curated Claude skills for equity investors and traders. Each skill bundles promp
   - Detects market top probability using O'Neil Distribution Days, Minervini Leading Stock Deterioration, and Monty Defensive Rotation.
   - 6-component tactical timing system for identifying distribution and topping patterns.
 
+- **IBD Distribution Day Monitor** (`ibd-distribution-day-monitor`)
+  - Daily IBD-style Distribution Day detection for QQQ/SPY (close down at least 0.2% on higher volume) with 25-session expiration and 5% invalidation.
+  - Tracks active records with `age_sessions` and counts `d5/d15/d25` clusters for risk classification (NORMAL/CAUTION/HIGH/SEVERE).
+  - Emits TQQQ/QQQ exposure recommendations (TQQQ cuts faster due to 3x leverage) and trailing stop adjustments.
+  - Complementary to Market Top Detector: this skill is single-component, ETF-direct, and TQQQ-aware while Market Top Detector is a 6-component composite.
+  - FMP API required.
+
 - **Downtrend Duration Analyzer** (`downtrend-duration-analyzer`)
   - Analyzes historical downtrend durations (peak-to-trough) and generates interactive HTML histograms segmented by sector and market cap.
   - Rolling window peak/trough detection with configurable depth and duration filters.
@@ -578,6 +585,7 @@ Several skills require API keys for data access:
 | **CANSLIM Stock Screener** | ✅ Required | ❌ Not used | ❌ Not used | Phase 2 (6 components); free tier sufficient; Finviz web scraping for institutional data |
 | **VCP Screener** | ✅ Required | ❌ Not used | ❌ Not used | Stage 2 + VCP pattern screening; free tier sufficient |
 | **FTD Detector** | ✅ Required | ❌ Not used | ❌ Not used | Index price data for rally/FTD detection |
+| **IBD Distribution Day Monitor** | ✅ Required | ❌ Not used | ❌ Not used | Daily QQQ/SPY OHLCV for Distribution Day detection |
 | **Macro Regime Detector** | ✅ Required | ❌ Not used | ❌ Not used | Cross-asset ETF ratio analysis |
 | **Market Breadth Analyzer** | ❌ Not used | ❌ Not used | ❌ Not used | Uses free GitHub CSV data |
 | **Uptrend Analyzer** | ❌ Not used | ❌ Not used | ❌ Not used | Uses free GitHub CSV data |
