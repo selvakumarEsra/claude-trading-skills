@@ -6,6 +6,7 @@ is verified without a network call.
 """
 
 import json
+from datetime import date, timedelta
 
 import generate_pre_market_plan as g2
 
@@ -105,6 +106,76 @@ class TestGeneratePlan:
         report = json.loads(plan_file.read_text())
         # Default tradable-min-grade is B → C is filtered
         assert report["plans"] == []
+
+    def test_as_of_override_advances_carryover(self, tmp_path):
+        """`--as-of` is a date override used by the Day-2 carryover smoke
+        step. Without it, the runbook would have to re-run Phase 1 just
+        to bump the date — an unwanted dependency on FMP for what is
+        purely an SSR-state test.
+
+        Flow:
+          1. Run Phase 2 for the Phase 1 as_of date (Day 1) so a state
+             file is created for the surviving ticker.
+          2. Mutate that file to set ssr_triggered_today=True (simulating
+             a real Rule 201 fire that the MVP cannot detect on its own
+             because aftermarket data isn't wired in yet).
+          3. Re-run Phase 2 with --as-of bumped to Day 2 and check that
+             ssr_carryover_from_prior_day flips to True.
+        """
+        in_path = _phase1_json(tmp_path, rank="B")
+        ssr_dir = tmp_path / "ssr"
+        # Day 1: produce the state file via the normal pipeline.
+        rc = g2.main(
+            [
+                "--candidates-json",
+                in_path,
+                "--broker",
+                "none",
+                "--output-dir",
+                str(tmp_path),
+                "--ssr-state-dir",
+                str(ssr_dir),
+                "--tradable-min-grade",
+                "B",
+            ]
+        )
+        assert rc == 0
+        # Day 1 state file: ticker XYZ, as_of 2026-04-30.
+        state_d1 = ssr_dir / "ssr_state_XYZ_2026-04-30.json"
+        assert state_d1.exists(), "Day-1 SSR state file should have been written"
+        d1_payload = json.loads(state_d1.read_text())
+        # Force the trigger flag so Day 2 has a non-trivial carryover input.
+        d1_payload["ssr_triggered_today"] = True
+        state_d1.write_text(json.dumps(d1_payload), encoding="utf-8")
+
+        # Day 2: same Phase 1 JSON, but advance --as-of by one calendar day.
+        day2 = (date.fromisoformat("2026-04-30") + timedelta(days=1)).isoformat()
+        rc = g2.main(
+            [
+                "--candidates-json",
+                in_path,
+                "--broker",
+                "none",
+                "--output-dir",
+                str(tmp_path),
+                "--ssr-state-dir",
+                str(ssr_dir),
+                "--tradable-min-grade",
+                "B",
+                "--as-of",
+                day2,
+                "--output-prefix",
+                "parabolic_short_plan_day2",
+            ]
+        )
+        assert rc == 0
+        day2_report_path = tmp_path / f"parabolic_short_plan_day2_{day2}.json"
+        report = json.loads(day2_report_path.read_text())
+        assert report["as_of"] == day2, "--as-of must override the Phase 1 JSON's as_of"
+        assert len(report["plans"]) == 1
+        ssr_state = report["plans"][0]["ssr_state"]
+        assert ssr_state["ssr_carryover_from_prior_day"] is True
+        assert ssr_state["uptick_rule_active"] is True
 
     def test_a_grade_with_low_prior_close_keeps_ssr_clean(self, tmp_path):
         # No SSR drop scenario — the planner should not flag uptick rule.

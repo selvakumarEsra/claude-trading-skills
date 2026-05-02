@@ -64,6 +64,23 @@ class AlpacaInventoryAdapter(BrokerShortInventoryAdapter):
     def get_inventory_status(self, symbol: str) -> dict:
         url = f"{self.base_url}/v2/assets/{symbol}"
         response = requests.get(url, headers=self._headers(), timeout=self.timeout)
+
+        # Paper accounts have a smaller asset universe than live; missing
+        # tickers must degrade to a blocking-but-non-fatal status so a
+        # single unknown symbol cannot abort an entire Phase 2 batch.
+        if response.status_code == 404:
+            return {
+                "shortable": False,
+                "easy_to_borrow": False,
+                "can_open_new_short": False,
+                "borrow_fee_apr": None,
+                "borrow_fee_manual_check_required": True,
+                "manual_locate_required": True,
+                "source": "alpaca_v2_assets",
+                "checked_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                "error": "asset_not_found",
+            }
+
         response.raise_for_status()
         data = response.json()
 

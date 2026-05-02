@@ -79,6 +79,16 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--ssr-state-dir", default="state/parabolic_short/")
     p.add_argument("--output-dir", default="reports/")
     p.add_argument("--output-prefix", default="parabolic_short_plan")
+    p.add_argument(
+        "--as-of",
+        default=None,
+        help=(
+            "YYYY-MM-DD override for the planning date. When omitted, the "
+            "Phase 1 JSON's ``as_of`` is used (with ``datetime.now()`` as a "
+            "final fallback). The override exists so the Day-2 SSR carryover "
+            "smoke step can advance the date without re-running Phase 1."
+        ),
+    )
     p.add_argument("--verbose", action="store_true")
     return p
 
@@ -286,7 +296,7 @@ def main(argv: list[str] | None = None) -> int:
 
     with open(args.candidates_json, encoding="utf-8") as fh:
         phase1 = json.load(fh)
-    as_of = phase1.get("as_of") or datetime.now().date().isoformat()
+    as_of = args.as_of or phase1.get("as_of") or datetime.now().date().isoformat()
     candidates = phase1.get("candidates", [])
 
     broker = _resolve_broker(args)

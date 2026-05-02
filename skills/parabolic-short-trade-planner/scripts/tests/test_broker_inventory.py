@@ -33,6 +33,18 @@ def _alpaca_response(*, shortable: bool, easy_to_borrow: bool) -> MagicMock:
     return resp
 
 
+def _alpaca_404_response() -> MagicMock:
+    resp = MagicMock()
+    resp.status_code = 404
+    resp.json.return_value = {"code": 40410000, "message": "asset not found"}
+    # raise_for_status() should NOT be invoked on the 404 path; if the
+    # adapter calls it anyway, the test fails with this exception.
+    resp.raise_for_status = MagicMock(
+        side_effect=AssertionError("raise_for_status should not be called on 404")
+    )
+    return resp
+
+
 def _make_alpaca():
     """Avoid importing the module at file scope so the patch below doesn't
     need to be active during collection."""
@@ -103,6 +115,35 @@ class TestAlpacaAdapterErrors:
 
     def test_http_error_propagates(self):
         bad = MagicMock()
+        bad.raise_for_status.side_effect = RuntimeError("HTTP 500")
+        with patch("requests.get", return_value=bad):
+            adapter = _make_alpaca()
+            with pytest.raises(RuntimeError):
+                adapter.get_inventory_status("XYZ")
+
+
+class TestAlpacaAdapter404:
+    def test_404_returns_asset_not_found_dict(self):
+        with patch("requests.get", return_value=_alpaca_404_response()):
+            adapter = _make_alpaca()
+            status = adapter.get_inventory_status("XXXXXFAKE")
+        # The blocking-reason surface must remain intact: can_open_new_short
+        # is False so manual_reasons.py maps to borrow_inventory_unavailable.
+        assert status["can_open_new_short"] is False
+        assert status["shortable"] is False
+        assert status["easy_to_borrow"] is False
+        assert status["borrow_fee_apr"] is None
+        assert status["borrow_fee_manual_check_required"] is True
+        assert status["manual_locate_required"] is True
+        assert status["source"] == "alpaca_v2_assets"
+        assert status["error"] == "asset_not_found"
+        # checked_at must still be present so callers can log freshness.
+        assert "checked_at" in status
+
+    def test_non_404_http_error_still_propagates(self):
+        # Sanity check: 5xx must NOT be silently swallowed.
+        bad = MagicMock()
+        bad.status_code = 500
         bad.raise_for_status.side_effect = RuntimeError("HTTP 500")
         with patch("requests.get", return_value=bad):
             adapter = _make_alpaca()
