@@ -76,6 +76,41 @@ If any gate fails, the script prints `FAIL <name> — HTTP <code> — <body
 truncated>`. Common failure causes are documented in the
 **Troubleshooting matrix** at the end.
 
+### 2a. FMP-only mode (no Alpaca credentials)
+
+Contributors who only have an FMP key configured can validate the
+FMP wire shape without needing Alpaca paper credentials:
+
+```bash
+python3 skills/parabolic-short-trade-planner/scripts/check_live_apis.py --fmp-only
+```
+
+Expected output:
+
+```
+Mode: --fmp-only (Alpaca gates will be skipped)
+PASS fmp.historical_price_eod_full — N bars; Issue #64 shape verified
+PASS fmp.profile — mktCap=...
+PASS fmp.sp500_constituent — N constituents
+SKIP alpaca.assets_aapl — explicitly skipped via --fmp-only
+SKIP alpaca.assets_404_graceful — explicitly skipped via --fmp-only
+Required gates: 2/2 passed (FMP only; Alpaca gates skipped, sp500 is optional warning)
+```
+
+Exit code is 0 when the FMP required gates pass. The Alpaca gates
+print as `SKIP` and never count toward the exit code in this mode.
+
+If you forget the flag and Alpaca creds are unset, the script still
+runs the FMP gates, prints `SKIP` for the Alpaca gates, and tells you
+to either pass `--fmp-only` or set the Alpaca env vars. This avoids
+the previous behaviour of aborting at setup.
+
+The Alpaca gates (`alpaca.assets_aapl`, `alpaca.assets_404_graceful`)
+are **maintainer-only** verification when FMP is the only API the
+contributor has access to. Production deployment of Phase 2 / Phase 3
+still requires Alpaca credentials — `--fmp-only` is for runbook
+validation, not production use.
+
 ## 3. Phase 1 — Tier 1 rejection smoke (`smoke_universe_diverse.csv`)
 
 ```bash
@@ -93,6 +128,30 @@ mid-caps), so most or all tickers will reject at the soft thresholds
 (`min_roc_5d`, `min_ma20_extension_pct`). **Zero candidates is a PASS
 for this tier** provided `--verbose` shows at least one rejection
 reason, which proves the invalidation path is live.
+
+Expected `--verbose` rejection log (one line per rejected ticker,
+under `INFO parabolic_short.screen Universe size: ...`):
+
+```
+DEBUG parabolic_short.screen Rejected JNJ: min_roc_5d threshold not met (got -0.13%, need >=30.00%)
+DEBUG parabolic_short.screen Rejected PG: min_roc_5d threshold not met (got -0.62%, need >=30.00%)
+DEBUG parabolic_short.screen Rejected KO: min_roc_5d threshold not met (got 2.54%, need >=30.00%)
+...
+```
+
+Other rejection reasons that may appear depending on the CSV /
+market state:
+
+- `Rejected <T>: insufficient_history (<N> bars; need >=21)` — recent
+  IPO or post-split; the screener cannot compute its 20-bar metrics.
+- `Rejected <T>: invalidation (<reasons>)` — hard-gate rejection
+  (market cap below mode floor, ADV below floor, earnings within
+  window, IPO too recent, catalyst blackout).
+- `Rejected <T>: min_ma20_extension_pct threshold not met (got <X>%, need >=<Y>%)`
+- `Rejected <T>: min_atr_extension threshold not met (got <X>, need >=<Y>)`
+
+Tier 1 PASS requires at least one such rejection line — that proves
+the rejection path is live, not silently swallowed.
 
 Output:
 

@@ -7,6 +7,7 @@ extension). Acts as the executable schema contract for downstream skills.
 """
 
 import json
+import logging
 from pathlib import Path
 
 # screen_parabolic.py is a CLI module; import works because conftest puts
@@ -71,6 +72,31 @@ class TestDryRunPipeline:
         assert "Parabolic Short Watchlist" in md
         if candidates:
             assert candidates[0]["ticker"] in md
+
+
+class TestRejectionLogging:
+    """The smoke runbook's Tier 1 PASS criterion is "--verbose
+    documents at least one rejection reason". Pin that contract: when
+    a candidate fails a soft threshold, the screener emits a DEBUG
+    line of the form "Rejected <T>: <reason> ..." which is visible
+    under --verbose (which sets root level to DEBUG)."""
+
+    def test_soft_threshold_rejection_logs_reason(self, caplog):
+        # CALM is a flat fixture that fails min_roc_5d at the default
+        # 30% threshold. Capturing at DEBUG simulates --verbose.
+        args = _make_args()
+        with caplog.at_level(logging.DEBUG, logger="parabolic_short.screen"):
+            screen_parabolic.run_dry_run(str(FIXTURE_PATH), args)
+        rejection_lines = [r.message for r in caplog.records if r.message.startswith("Rejected ")]
+        # At least one ticker must have logged a rejection reason.
+        assert rejection_lines, (
+            "Expected at least one 'Rejected ...' DEBUG line — the smoke "
+            "runbook's Tier 1 PASS criterion depends on this."
+        )
+        # Reason text should be human-readable (not just a code).
+        assert any("threshold not met" in line for line in rejection_lines), (
+            f"Expected a 'threshold not met' rejection reason; got {rejection_lines}"
+        )
 
 
 class TestMainCLI:

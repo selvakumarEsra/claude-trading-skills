@@ -99,6 +99,7 @@ def screen_one_candidate(
     """
     bars = normalize_bars(bars_recent_first, output_order="chronological")
     if len(bars) < 21:  # need at least 20 bars for MA / ATR / range expansion
+        logger.debug("Rejected %s: insufficient_history (%d bars; need >=21)", ticker, len(bars))
         return None
 
     closes = [b["close"] for b in bars]
@@ -129,18 +130,40 @@ def screen_one_candidate(
 
     invalidation = check_invalidation(candidate_for_invalidation, mode=mode)
     if invalidation["is_invalid"]:
-        logger.debug("%s rejected: %s", ticker, ", ".join(invalidation["reasons"]))
+        logger.debug("Rejected %s: invalidation (%s)", ticker, ", ".join(invalidation["reasons"]))
         return None
 
     # Threshold gates from CLI (these are softer than invalidation — they
-    # filter watchlist size, not safety).
+    # filter watchlist size, not safety). Log per-ticker at DEBUG so
+    # `--verbose` runs surface the smoke-runbook Tier-1 PASS evidence
+    # ("--verbose documents at least one rejection reason").
     min_roc_5d = args.min_roc_5d if args.min_roc_5d is not None else DEFAULT_MIN_ROC_5D[mode]
-    if (raw_metrics.get("return_5d_pct") or 0) < min_roc_5d:
+    return_5d = raw_metrics.get("return_5d_pct") or 0
+    if return_5d < min_roc_5d:
+        logger.debug(
+            "Rejected %s: min_roc_5d threshold not met (got %.2f%%, need >=%.2f%%)",
+            ticker,
+            return_5d,
+            min_roc_5d,
+        )
         return None
-    if (raw_metrics.get("ext_20dma_pct") or 0) < args.min_ma20_extension_pct:
+    ext_pct = raw_metrics.get("ext_20dma_pct") or 0
+    if ext_pct < args.min_ma20_extension_pct:
+        logger.debug(
+            "Rejected %s: min_ma20_extension_pct threshold not met (got %.2f%%, need >=%.2f%%)",
+            ticker,
+            ext_pct,
+            args.min_ma20_extension_pct,
+        )
         return None
     ext_atr = raw_metrics.get("ext_20dma_atr")
     if ext_atr is None or ext_atr < args.min_atr_extension:
+        logger.debug(
+            "Rejected %s: min_atr_extension threshold not met (got %s, need >=%.2f)",
+            ticker,
+            f"{ext_atr:.2f}" if ext_atr is not None else "None",
+            args.min_atr_extension,
+        )
         return None
 
     composite = calculate_composite_score(component_payload["components"])
@@ -277,6 +300,12 @@ def main(argv: list[str] | None = None) -> int:
         level=logging.DEBUG if args.verbose else logging.INFO,
         format="%(levelname)s %(name)s %(message)s",
     )
+    # Quiet HTTP-library noise so per-ticker rejection logs are
+    # visible under --verbose. Without this, urllib3.connectionpool
+    # DEBUG lines bury the application-level rejection messages the
+    # smoke runbook's Tier 1 PASS criterion looks for.
+    for noisy in ("urllib3", "urllib3.connectionpool"):
+        logging.getLogger(noisy).setLevel(logging.WARNING)
     as_of = args.as_of or datetime.now().date().isoformat()
 
     if args.dry_run:

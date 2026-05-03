@@ -29,6 +29,7 @@ first 200 chars of the error body on failures.
 
 from __future__ import annotations
 
+import argparse
 import os
 import sys
 from datetime import date, timedelta
@@ -67,6 +68,10 @@ def _print_warn(name: str, detail: str) -> None:
 
 def _print_fail(name: str, detail: str) -> None:
     print(f"FAIL {name} — {detail}")
+
+
+def _print_skip(name: str, detail: str) -> None:
+    print(f"SKIP {name} — {detail}")
 
 
 def check_fmp_historical(api_key: str) -> bool:
@@ -252,9 +257,29 @@ def check_alpaca_404_graceful(api_key: str, secret: str, paper: bool) -> bool:
     return True
 
 
-def main() -> int:
+def _build_arg_parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(
+        description="Live API smoke check for parabolic-short-trade-planner",
+    )
+    p.add_argument(
+        "--fmp-only",
+        action="store_true",
+        help=(
+            "Skip Alpaca gates entirely. Useful for contributors who only have "
+            "an FMP key configured. Exit 0 when the FMP required gates pass; "
+            "the Alpaca gates are reported as SKIP and never gate the exit code."
+        ),
+    )
+    return p
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = _build_arg_parser().parse_args(argv)
+
     print("=" * 70)
     print("Parabolic Short — live API smoke check")
+    if args.fmp_only:
+        print("Mode: --fmp-only (Alpaca gates will be skipped)")
     print("=" * 70)
 
     fmp_key = os.environ.get("FMP_API_KEY")
@@ -265,22 +290,54 @@ def main() -> int:
     if not fmp_key:
         print("FAIL setup — FMP_API_KEY env var is missing")
         return 1
-    if not alpaca_key or not alpaca_secret:
-        print("FAIL setup — ALPACA_API_KEY / ALPACA_SECRET_KEY env vars are missing")
-        return 1
 
-    results = {
+    # Run the FMP gates first; they don't depend on Alpaca config.
+    results: dict[str, bool] = {
         "fmp_historical": check_fmp_historical(fmp_key),
         "fmp_profile": check_fmp_profile(fmp_key),
         "fmp_sp500": check_fmp_sp500(fmp_key),  # optional, never gates exit code
-        "alpaca_assets_aapl": check_alpaca_assets_aapl(alpaca_key, alpaca_secret, alpaca_paper),
-        "alpaca_404_graceful": check_alpaca_404_graceful(alpaca_key, alpaca_secret, alpaca_paper),
     }
 
-    required = ("fmp_historical", "fmp_profile", "alpaca_assets_aapl", "alpaca_404_graceful")
-    passed = sum(1 for k in required if results[k])
+    # Decide whether to run the Alpaca gates.
+    alpaca_skipped = args.fmp_only or not alpaca_key or not alpaca_secret
+
+    if alpaca_skipped:
+        if args.fmp_only:
+            reason = "explicitly skipped via --fmp-only"
+        else:
+            reason = "ALPACA_API_KEY / ALPACA_SECRET_KEY env vars not configured"
+        _print_skip("alpaca.assets_aapl", reason)
+        _print_skip("alpaca.assets_404_graceful", reason)
+    else:
+        results["alpaca_assets_aapl"] = check_alpaca_assets_aapl(
+            alpaca_key, alpaca_secret, alpaca_paper
+        )
+        results["alpaca_404_graceful"] = check_alpaca_404_graceful(
+            alpaca_key, alpaca_secret, alpaca_paper
+        )
+
+    # Required-gate set depends on whether Alpaca was skipped. In either case
+    # the FMP gates are required; the Alpaca gates are only required when
+    # they were actually attempted.
+    required = ["fmp_historical", "fmp_profile"]
+    if not alpaca_skipped:
+        required.extend(["alpaca_assets_aapl", "alpaca_404_graceful"])
+
+    passed = sum(1 for k in required if results.get(k))
     print("-" * 70)
-    print(f"Required gates: {passed}/{len(required)} passed (sp500 is optional warning)")
+    if alpaca_skipped:
+        print(
+            f"Required gates: {passed}/{len(required)} passed "
+            f"(FMP only; Alpaca gates skipped, sp500 is optional warning)"
+        )
+        if not args.fmp_only:
+            print(
+                "Note: pass --fmp-only to acknowledge intent, or set ALPACA_API_KEY / "
+                "ALPACA_SECRET_KEY to run the full check."
+            )
+    else:
+        print(f"Required gates: {passed}/{len(required)} passed (sp500 is optional warning)")
+
     return 0 if passed == len(required) else 1
 
 
